@@ -9,38 +9,215 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TrashRouteImport } from './routes/trash'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as RegisterRouteImport } from './routes/register'
+import { Route as NewMemoRouteImport } from './routes/new-memo'
+import { Route as FleetRouteImport } from './routes/fleet'
+import { Route as ConsigneesRouteImport } from './routes/consignees'
+import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MemoIdRouteImport } from './routes/memo.$id'
 
+const TrashRoute = TrashRouteImport.update({
+  id: '/trash',
+  path: '/trash',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportsRoute = ReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RegisterRoute = RegisterRouteImport.update({
+  id: '/register',
+  path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewMemoRoute = NewMemoRouteImport.update({
+  id: '/new-memo',
+  path: '/new-memo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FleetRoute = FleetRouteImport.update({
+  id: '/fleet',
+  path: '/fleet',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConsigneesRoute = ConsigneesRouteImport.update({
+  id: '/consignees',
+  path: '/consignees',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuditRoute = AuditRouteImport.update({
+  id: '/audit',
+  path: '/audit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MemoIdRoute = MemoIdRouteImport.update({
+  id: '/memo/$id',
+  path: '/memo/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
+  '/consignees': typeof ConsigneesRoute
+  '/fleet': typeof FleetRoute
+  '/new-memo': typeof NewMemoRoute
+  '/register': typeof RegisterRoute
+  '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
+  '/trash': typeof TrashRoute
+  '/memo/$id': typeof MemoIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
+  '/consignees': typeof ConsigneesRoute
+  '/fleet': typeof FleetRoute
+  '/new-memo': typeof NewMemoRoute
+  '/register': typeof RegisterRoute
+  '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
+  '/trash': typeof TrashRoute
+  '/memo/$id': typeof MemoIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/audit': typeof AuditRoute
+  '/consignees': typeof ConsigneesRoute
+  '/fleet': typeof FleetRoute
+  '/new-memo': typeof NewMemoRoute
+  '/register': typeof RegisterRoute
+  '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
+  '/trash': typeof TrashRoute
+  '/memo/$id': typeof MemoIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/audit'
+    | '/consignees'
+    | '/fleet'
+    | '/new-memo'
+    | '/register'
+    | '/reports'
+    | '/settings'
+    | '/trash'
+    | '/memo/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/audit'
+    | '/consignees'
+    | '/fleet'
+    | '/new-memo'
+    | '/register'
+    | '/reports'
+    | '/settings'
+    | '/trash'
+    | '/memo/$id'
+  id:
+    | '__root__'
+    | '/'
+    | '/audit'
+    | '/consignees'
+    | '/fleet'
+    | '/new-memo'
+    | '/register'
+    | '/reports'
+    | '/settings'
+    | '/trash'
+    | '/memo/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AuditRoute: typeof AuditRoute
+  ConsigneesRoute: typeof ConsigneesRoute
+  FleetRoute: typeof FleetRoute
+  NewMemoRoute: typeof NewMemoRoute
+  RegisterRoute: typeof RegisterRoute
+  ReportsRoute: typeof ReportsRoute
+  SettingsRoute: typeof SettingsRoute
+  TrashRoute: typeof TrashRoute
+  MemoIdRoute: typeof MemoIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/trash': {
+      id: '/trash'
+      path: '/trash'
+      fullPath: '/trash'
+      preLoaderRoute: typeof TrashRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/register': {
+      id: '/register'
+      path: '/register'
+      fullPath: '/register'
+      preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/new-memo': {
+      id: '/new-memo'
+      path: '/new-memo'
+      fullPath: '/new-memo'
+      preLoaderRoute: typeof NewMemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/fleet': {
+      id: '/fleet'
+      path: '/fleet'
+      fullPath: '/fleet'
+      preLoaderRoute: typeof FleetRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/consignees': {
+      id: '/consignees'
+      path: '/consignees'
+      fullPath: '/consignees'
+      preLoaderRoute: typeof ConsigneesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/audit': {
+      id: '/audit'
+      path: '/audit'
+      fullPath: '/audit'
+      preLoaderRoute: typeof AuditRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +225,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/memo/$id': {
+      id: '/memo/$id'
+      path: '/memo/$id'
+      fullPath: '/memo/$id'
+      preLoaderRoute: typeof MemoIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AuditRoute: AuditRoute,
+  ConsigneesRoute: ConsigneesRoute,
+  FleetRoute: FleetRoute,
+  NewMemoRoute: NewMemoRoute,
+  RegisterRoute: RegisterRoute,
+  ReportsRoute: ReportsRoute,
+  SettingsRoute: SettingsRoute,
+  TrashRoute: TrashRoute,
+  MemoIdRoute: MemoIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
