@@ -127,9 +127,45 @@ export function AppShell({
           >
             {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
-          <button className="rounded-full p-2 text-muted-foreground hover:bg-muted">
-            <Bell className="h-5 w-5" />
-          </button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button className="relative rounded-full p-2 text-muted-foreground hover:bg-muted" aria-label="Notifications">
+                <Bell className="h-5 w-5" />
+                {notifCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {notifCount}
+                  </span>
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-0">
+              <div className="border-b px-4 py-3 text-sm font-semibold">Notifications</div>
+              {notifCount === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">All clear — nothing needs attention.</div>
+              ) : (
+                <div className="divide-y">
+                  {pendingPaymentMemos.length > 0 && (
+                    <button
+                      className="block w-full px-4 py-3 text-left hover:bg-muted"
+                      onClick={() => navigate({ to: "/register", search: { f: "payment_pending" } })}
+                    >
+                      <div className="text-sm font-semibold">{pendingPaymentMemos.length} dispatch(es) with pending payment</div>
+                      <div className="text-xs text-orange-600">{formatMoney(pendingOutstanding)} outstanding</div>
+                    </button>
+                  )}
+                  {runningMemos.length > 0 && (
+                    <button
+                      className="block w-full px-4 py-3 text-left hover:bg-muted"
+                      onClick={() => navigate({ to: "/register", search: { f: "running" } })}
+                    >
+                      <div className="text-sm font-semibold">{runningMemos.length} trip(s) running</div>
+                      <div className="text-xs text-blue-600">Awaiting delivery</div>
+                    </button>
+                  )}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
           <div className="ml-2 flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-sm font-semibold text-white">
               AD
