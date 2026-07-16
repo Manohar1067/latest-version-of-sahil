@@ -29,9 +29,9 @@ function MemoView() {
   const { print } = Route.useSearch();
   const nav = useNavigate();
   const { data: memo } = useStoreData<Memo | undefined>(() => getMemo(id), [id]);
+  const { data: settings } = useStoreData<Settings>(() => getSettings(), []);
   const [truck, setTruck] = useState<FleetTruck | undefined>();
   const [consignee, setConsignee] = useState<Consignee | undefined>();
-  const [settings, setSettings] = useState<Settings | undefined>();
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,7 +39,6 @@ function MemoView() {
       getTruck(memo.truckId).then(setTruck);
       getConsignee(memo.consigneeId).then(setConsignee);
     }
-    getSettings().then(setSettings);
   }, [memo]);
 
   useEffect(() => {
