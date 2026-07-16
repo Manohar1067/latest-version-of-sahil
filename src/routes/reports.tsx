@@ -86,13 +86,81 @@ function ReportsPage() {
   filtered.forEach((m) => { driverStats[m.driverName] = (driverStats[m.driverName] || 0) + 1; });
   const topDrivers = Object.entries(driverStats).sort((a, b) => b[1] - a[1]);
 
+  // chart data
+  const monthly = useMemo(() => {
+    const map: Record<string, { key: string; revenue: number; expenses: number; trips: number }> = {};
+    filtered.forEach((m) => {
+      const d = new Date(m.dispatchDate);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!map[key]) map[key] = { key, revenue: 0, expenses: 0, trips: 0 };
+      map[key].revenue += m.netFreight;
+      map[key].expenses += m.totalExpenses;
+      map[key].trips += 1;
+    });
+    return Object.values(map).sort((a, b) => a.key.localeCompare(b.key));
+  }, [filtered]);
+
+  const statusPie = useMemo(() => {
+    const buckets: Record<string, number> = { Completed: 0, Running: 0, Pending: 0, Cancelled: 0 };
+    filtered.forEach((m) => {
+      if (m.status === "Completed") buckets.Completed++;
+      else if (m.status === "Running" || m.status === "Dispatched") buckets.Running++;
+      else if (m.status === "Cancelled") buckets.Cancelled++;
+      else buckets.Pending++;
+    });
+    return Object.entries(buckets).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
+  }, [filtered]);
+
+  const PIE_COLORS: Record<string, string> = {
+    Completed: "#10b981", Running: "#3b82f6", Pending: "#f59e0b", Cancelled: "#ef4444",
+  };
+
+  const exportSummary = (fmt: "xlsx" | "csv") => {
+    const rows = filtered.map((m) => {
+      const t = trucks?.find((x) => x.id === m.truckId);
+      return {
+        "Memo #": m.memoNumber, "Date": formatDate(m.dispatchDate),
+        "Truck": t?.truckNumber ?? "", "Destination": m.toLocation, "Material": m.materialName,
+        "Net Freight": m.netFreight, "Advance": m.advance, "Balance": m.balance,
+        "Expenses": m.totalExpenses, "Final Payable": m.finalPayable, "Status": m.status,
+      };
+    });
+    if (!rows.length) { toast.error("No data to export"); return; }
+    exportRows(rows, `report-${range}-${new Date().toISOString().slice(0, 10)}`, fmt);
+    toast.success(`Exported ${rows.length} row(s)`);
+  };
+
+  const exportPdf = async () => {
+    if (!chartsRef.current) return;
+    toast.info("Generating PDF…");
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"), import("jspdf"),
+    ]);
+    const canvas = await html2canvas(chartsRef.current, { scale: 2, backgroundColor: "#ffffff" });
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    const w = pdf.internal.pageSize.getWidth();
+    const h = (canvas.height * w) / canvas.width;
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, h);
+    pdf.save(`report-${range}.pdf`);
+  };
+
   return (
     <AppShell title="Reports" breadcrumb="Home / Reports" actions={
       <>
-        <Button variant="outline" onClick={() => toast.info("Excel export — coming soon")}><Download className="mr-1 h-4 w-4" />Excel</Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline"><Download className="mr-1 h-4 w-4" />Export</Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => exportSummary("xlsx")}>Excel (.xlsx)</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => exportSummary("csv")}>CSV</DropdownMenuItem>
+            <DropdownMenuItem onClick={exportPdf}>PDF</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button onClick={() => window.print()}><Printer className="mr-1 h-4 w-4" />Print</Button>
       </>
     }>
+
       <div className="card-surface mb-5 flex flex-wrap items-end gap-3 p-5">
         <div>
           <label className="section-title mb-1 block">Date Range</label>
