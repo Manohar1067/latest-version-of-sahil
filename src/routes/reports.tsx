@@ -53,6 +53,7 @@ function ReportsPage() {
   const { data: trucks } = useStoreData<FleetTruck[]>(() => getTrucks(), []);
   const [range, setRange] = useState<Range>("month");
   const [type, setType] = useState<string>("summary");
+  const chartsRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => {
     const s = rangeStart(range).getTime(); const e = rangeEnd(range).getTime();
