@@ -169,7 +169,7 @@ function NewMemo() {
           <Field label="Status" required>
             <Select value={form.status} onValueChange={(v) => set("status", v as MemoStatus)}>
               <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-              <SelectContent>{ALL_MEMO_STATUSES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent>
+              <SelectContent>{(edit ? ALL_MEMO_STATUSES : CREATE_STATUSES).map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent>
             </Select>
           </Field>
           <Field label="Remarks"><Input className="h-11" value={form.remarks} onChange={(e) => set("remarks", e.target.value)} /></Field>
