@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   LayoutDashboard,
   FilePlus2,
@@ -14,8 +14,10 @@ import {
   Bell,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { getSettings, updateSettings, type Settings } from "@/lib/dataStore";
+import { getSettings, updateSettings, getMemos, type Settings, type Memo } from "@/lib/dataStore";
 import { useStoreData } from "@/lib/useStore";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { formatMoney } from "@/lib/format";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
