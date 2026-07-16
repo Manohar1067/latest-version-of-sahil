@@ -6,9 +6,17 @@ import { formatMoney, formatDate } from "@/lib/format";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Printer, Download } from "lucide-react";
 import { toast } from "sonner";
+import { exportRows } from "@/lib/exportData";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line,
+} from "recharts";
 
 export const Route = createFileRoute("/reports")({ component: ReportsPage });
 
