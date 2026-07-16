@@ -182,19 +182,23 @@ function NewMemo() {
             <datalist id="transports"><option value="SRL Direct" /><option value="Kareem Transports" /></datalist>
           </Field>
           <Field label="Consignee" required>
-            <Select value={form.consigneeId} onValueChange={(v) => set("consigneeId", v)}>
-              <SelectTrigger className="h-11"><SelectValue placeholder="Select consignee" /></SelectTrigger>
-              <SelectContent>{consignees?.map((c) => (<SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>))}</SelectContent>
-            </Select>
+            <Combobox
+              options={(consignees ?? []).map((c) => ({ value: c.id, label: c.companyName, keywords: `${c.city} ${c.contactPerson}` }))}
+              value={form.consigneeId}
+              onChange={(v) => set("consigneeId", v)}
+              placeholder="Search consignee…"
+            />
           </Field>
         </Section>
 
         <Section title="Vehicle Information">
           <Field label="Truck Number" required>
-            <Select value={form.truckId} onValueChange={onTruck}>
-              <SelectTrigger className="h-11"><SelectValue placeholder="Select truck" /></SelectTrigger>
-              <SelectContent>{trucks?.map((t) => (<SelectItem key={t.id} value={t.id}>{t.truckNumber}</SelectItem>))}</SelectContent>
-            </Select>
+            <Combobox
+              options={(trucks ?? []).map((t) => ({ value: t.id, label: t.truckNumber, keywords: `${t.driverName} ${t.ownerName}` }))}
+              value={form.truckId}
+              onChange={onTruck}
+              placeholder="Search truck…"
+            />
           </Field>
           <Field label="Driver Name"><Input className="h-11" value={form.driverName} onChange={(e) => set("driverName", e.target.value)} /></Field>
           <Field label="Owner Name"><Input className="h-11" value={form.ownerName} onChange={(e) => set("ownerName", e.target.value)} /></Field>
