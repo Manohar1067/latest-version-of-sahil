@@ -12,8 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Combobox } from "@/components/Combobox";
 import { toInputDate, fromInputDate } from "@/lib/format";
 import { toast } from "sonner";
+
+const CREATE_STATUSES: MemoStatus[] = ["Dispatched", "Delivered", "Payment Pending", "LR Received", "LR Submitted", "Completed"];
 
 type Search = { edit?: string };
 export const Route = createFileRoute("/new-memo")({
