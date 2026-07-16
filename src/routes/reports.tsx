@@ -6,9 +6,17 @@ import { formatMoney, formatDate } from "@/lib/format";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Printer, Download } from "lucide-react";
 import { toast } from "sonner";
+import { exportRows } from "@/lib/exportData";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line,
+} from "recharts";
 
 export const Route = createFileRoute("/reports")({ component: ReportsPage });
 
@@ -45,6 +53,7 @@ function ReportsPage() {
   const { data: trucks } = useStoreData<FleetTruck[]>(() => getTrucks(), []);
   const [range, setRange] = useState<Range>("month");
   const [type, setType] = useState<string>("summary");
+  const chartsRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => {
     const s = rangeStart(range).getTime(); const e = rangeEnd(range).getTime();
@@ -77,13 +86,81 @@ function ReportsPage() {
   filtered.forEach((m) => { driverStats[m.driverName] = (driverStats[m.driverName] || 0) + 1; });
   const topDrivers = Object.entries(driverStats).sort((a, b) => b[1] - a[1]);
 
+  // chart data
+  const monthly = useMemo(() => {
+    const map: Record<string, { key: string; revenue: number; expenses: number; trips: number }> = {};
+    filtered.forEach((m) => {
+      const d = new Date(m.dispatchDate);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      if (!map[key]) map[key] = { key, revenue: 0, expenses: 0, trips: 0 };
+      map[key].revenue += m.netFreight;
+      map[key].expenses += m.totalExpenses;
+      map[key].trips += 1;
+    });
+    return Object.values(map).sort((a, b) => a.key.localeCompare(b.key));
+  }, [filtered]);
+
+  const statusPie = useMemo(() => {
+    const buckets: Record<string, number> = { Completed: 0, Running: 0, Pending: 0, Cancelled: 0 };
+    filtered.forEach((m) => {
+      if (m.status === "Completed") buckets.Completed++;
+      else if (m.status === "Running" || m.status === "Dispatched") buckets.Running++;
+      else if (m.status === "Cancelled") buckets.Cancelled++;
+      else buckets.Pending++;
+    });
+    return Object.entries(buckets).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
+  }, [filtered]);
+
+  const PIE_COLORS: Record<string, string> = {
+    Completed: "#10b981", Running: "#3b82f6", Pending: "#f59e0b", Cancelled: "#ef4444",
+  };
+
+  const exportSummary = (fmt: "xlsx" | "csv") => {
+    const rows = filtered.map((m) => {
+      const t = trucks?.find((x) => x.id === m.truckId);
+      return {
+        "Memo #": m.memoNumber, "Date": formatDate(m.dispatchDate),
+        "Truck": t?.truckNumber ?? "", "Destination": m.toLocation, "Material": m.materialName,
+        "Net Freight": m.netFreight, "Advance": m.advance, "Balance": m.balance,
+        "Expenses": m.totalExpenses, "Final Payable": m.finalPayable, "Status": m.status,
+      };
+    });
+    if (!rows.length) { toast.error("No data to export"); return; }
+    exportRows(rows, `report-${range}-${new Date().toISOString().slice(0, 10)}`, fmt);
+    toast.success(`Exported ${rows.length} row(s)`);
+  };
+
+  const exportPdf = async () => {
+    if (!chartsRef.current) return;
+    toast.info("Generating PDF…");
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"), import("jspdf"),
+    ]);
+    const canvas = await html2canvas(chartsRef.current, { scale: 2, backgroundColor: "#ffffff" });
+    const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+    const w = pdf.internal.pageSize.getWidth();
+    const h = (canvas.height * w) / canvas.width;
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, h);
+    pdf.save(`report-${range}.pdf`);
+  };
+
   return (
     <AppShell title="Reports" breadcrumb="Home / Reports" actions={
       <>
-        <Button variant="outline" onClick={() => toast.info("Excel export — coming soon")}><Download className="mr-1 h-4 w-4" />Excel</Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline"><Download className="mr-1 h-4 w-4" />Export</Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => exportSummary("xlsx")}>Excel (.xlsx)</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => exportSummary("csv")}>CSV</DropdownMenuItem>
+            <DropdownMenuItem onClick={exportPdf}>PDF</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button onClick={() => window.print()}><Printer className="mr-1 h-4 w-4" />Print</Button>
       </>
     }>
+
       <div className="card-surface mb-5 flex flex-wrap items-end gap-3 p-5">
         <div>
           <label className="section-title mb-1 block">Date Range</label>
@@ -118,16 +195,66 @@ function ReportsPage() {
         </div>
       </div>
 
-      {/* Summary KPIs */}
-      <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard label="Revenue" value={formatMoney(revenue)} tone="text-emerald-600" />
-        <StatCard label="Expenses" value={formatMoney(expense)} tone="text-red-600" />
-        <StatCard label="Profit" value={formatMoney(profit)} tone={profit >= 0 ? "text-emerald-600" : "text-red-600"} />
-        <StatCard label="Pending Payment" value={formatMoney(pendingPay)} tone="text-orange-600" />
-        <StatCard label="Completed Trips" value={String(completed)} />
-        <StatCard label="Running Trips" value={String(running)} />
-        <StatCard label="Cancelled Trips" value={String(cancelled)} />
-        <StatCard label="LR Pending" value={String(lrPendingCount)} />
+      <div ref={chartsRef} className="mb-5 space-y-5">
+        {/* Summary KPIs */}
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <StatCard label="Revenue" value={formatMoney(revenue)} tone="text-emerald-600" />
+          <StatCard label="Expenses" value={formatMoney(expense)} tone="text-red-600" />
+          <StatCard label="Profit" value={formatMoney(profit)} tone={profit >= 0 ? "text-emerald-600" : "text-red-600"} />
+          <StatCard label="Pending Payment" value={formatMoney(pendingPay)} tone="text-orange-600" />
+          <StatCard label="Completed Trips" value={String(completed)} />
+          <StatCard label="Running Trips" value={String(running)} />
+          <StatCard label="Cancelled Trips" value={String(cancelled)} />
+          <StatCard label="LR Pending" value={String(lrPendingCount)} />
+        </div>
+
+        {/* Charts */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div className="card-surface p-5">
+            <h3 className="mb-3">Monthly Revenue vs Expenses</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthly}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="key" fontSize={12} />
+                  <YAxis fontSize={12} />
+                  <Tooltip formatter={(v: number) => formatMoney(v)} />
+                  <Legend />
+                  <Bar dataKey="revenue" name="Revenue" fill="#10b981" />
+                  <Bar dataKey="expenses" name="Expenses" fill="#ef4444" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="card-surface p-5">
+            <h3 className="mb-3">Monthly Trips</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={monthly}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="key" fontSize={12} />
+                  <YAxis fontSize={12} allowDecimals={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="trips" name="Trips" stroke="#3b82f6" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="card-surface p-5 lg:col-span-2">
+            <h3 className="mb-3">Status Distribution</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={statusPie} dataKey="value" nameKey="name" outerRadius={90} label>
+                    {statusPie.map((s) => (<Cell key={s.name} fill={PIE_COLORS[s.name]} />))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
       </div>
 
       {type === "trucks" && (

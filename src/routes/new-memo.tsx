@@ -12,8 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Combobox } from "@/components/Combobox";
 import { toInputDate, fromInputDate } from "@/lib/format";
 import { toast } from "sonner";
+
+const CREATE_STATUSES: MemoStatus[] = ["Dispatched", "Delivered", "Payment Pending", "LR Received", "LR Submitted", "Completed"];
 
 type Search = { edit?: string };
 export const Route = createFileRoute("/new-memo")({
@@ -166,7 +169,7 @@ function NewMemo() {
           <Field label="Status" required>
             <Select value={form.status} onValueChange={(v) => set("status", v as MemoStatus)}>
               <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
-              <SelectContent>{ALL_MEMO_STATUSES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent>
+              <SelectContent>{(edit ? ALL_MEMO_STATUSES : CREATE_STATUSES).map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent>
             </Select>
           </Field>
           <Field label="Remarks"><Input className="h-11" value={form.remarks} onChange={(e) => set("remarks", e.target.value)} /></Field>
@@ -179,19 +182,23 @@ function NewMemo() {
             <datalist id="transports"><option value="SRL Direct" /><option value="Kareem Transports" /></datalist>
           </Field>
           <Field label="Consignee" required>
-            <Select value={form.consigneeId} onValueChange={(v) => set("consigneeId", v)}>
-              <SelectTrigger className="h-11"><SelectValue placeholder="Select consignee" /></SelectTrigger>
-              <SelectContent>{consignees?.map((c) => (<SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>))}</SelectContent>
-            </Select>
+            <Combobox
+              options={(consignees ?? []).map((c) => ({ value: c.id, label: c.companyName, keywords: `${c.city} ${c.contactPerson}` }))}
+              value={form.consigneeId}
+              onChange={(v) => set("consigneeId", v)}
+              placeholder="Search consignee…"
+            />
           </Field>
         </Section>
 
         <Section title="Vehicle Information">
           <Field label="Truck Number" required>
-            <Select value={form.truckId} onValueChange={onTruck}>
-              <SelectTrigger className="h-11"><SelectValue placeholder="Select truck" /></SelectTrigger>
-              <SelectContent>{trucks?.map((t) => (<SelectItem key={t.id} value={t.id}>{t.truckNumber}</SelectItem>))}</SelectContent>
-            </Select>
+            <Combobox
+              options={(trucks ?? []).map((t) => ({ value: t.id, label: t.truckNumber, keywords: `${t.driverName} ${t.ownerName}` }))}
+              value={form.truckId}
+              onChange={onTruck}
+              placeholder="Search truck…"
+            />
           </Field>
           <Field label="Driver Name"><Input className="h-11" value={form.driverName} onChange={(e) => set("driverName", e.target.value)} /></Field>
           <Field label="Owner Name"><Input className="h-11" value={form.ownerName} onChange={(e) => set("ownerName", e.target.value)} /></Field>
