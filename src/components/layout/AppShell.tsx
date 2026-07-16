@@ -43,8 +43,15 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const navigate = useNavigate();
   const { data: settings } = useStoreData<Settings>(() => getSettings(), []);
+  const { data: memos } = useStoreData<Memo[]>(() => getMemos(), []);
   const [dark, setDark] = useState(false);
+
+  const pendingPaymentMemos = (memos ?? []).filter((m) => m.status === "Payment Pending");
+  const runningMemos = (memos ?? []).filter((m) => m.status === "Running" || m.status === "Dispatched");
+  const pendingOutstanding = pendingPaymentMemos.reduce((s, m) => s + m.balance, 0);
+  const notifCount = pendingPaymentMemos.length + runningMemos.length;
 
   useEffect(() => {
     const on = settings?.darkMode ?? false;
