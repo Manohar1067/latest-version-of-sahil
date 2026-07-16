@@ -195,16 +195,66 @@ function ReportsPage() {
         </div>
       </div>
 
-      {/* Summary KPIs */}
-      <div className="mb-5 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <StatCard label="Revenue" value={formatMoney(revenue)} tone="text-emerald-600" />
-        <StatCard label="Expenses" value={formatMoney(expense)} tone="text-red-600" />
-        <StatCard label="Profit" value={formatMoney(profit)} tone={profit >= 0 ? "text-emerald-600" : "text-red-600"} />
-        <StatCard label="Pending Payment" value={formatMoney(pendingPay)} tone="text-orange-600" />
-        <StatCard label="Completed Trips" value={String(completed)} />
-        <StatCard label="Running Trips" value={String(running)} />
-        <StatCard label="Cancelled Trips" value={String(cancelled)} />
-        <StatCard label="LR Pending" value={String(lrPendingCount)} />
+      <div ref={chartsRef} className="mb-5 space-y-5">
+        {/* Summary KPIs */}
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <StatCard label="Revenue" value={formatMoney(revenue)} tone="text-emerald-600" />
+          <StatCard label="Expenses" value={formatMoney(expense)} tone="text-red-600" />
+          <StatCard label="Profit" value={formatMoney(profit)} tone={profit >= 0 ? "text-emerald-600" : "text-red-600"} />
+          <StatCard label="Pending Payment" value={formatMoney(pendingPay)} tone="text-orange-600" />
+          <StatCard label="Completed Trips" value={String(completed)} />
+          <StatCard label="Running Trips" value={String(running)} />
+          <StatCard label="Cancelled Trips" value={String(cancelled)} />
+          <StatCard label="LR Pending" value={String(lrPendingCount)} />
+        </div>
+
+        {/* Charts */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div className="card-surface p-5">
+            <h3 className="mb-3">Monthly Revenue vs Expenses</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthly}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="key" fontSize={12} />
+                  <YAxis fontSize={12} />
+                  <Tooltip formatter={(v: number) => formatMoney(v)} />
+                  <Legend />
+                  <Bar dataKey="revenue" name="Revenue" fill="#10b981" />
+                  <Bar dataKey="expenses" name="Expenses" fill="#ef4444" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="card-surface p-5">
+            <h3 className="mb-3">Monthly Trips</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={monthly}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="key" fontSize={12} />
+                  <YAxis fontSize={12} allowDecimals={false} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="trips" name="Trips" stroke="#3b82f6" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+          <div className="card-surface p-5 lg:col-span-2">
+            <h3 className="mb-3">Status Distribution</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={statusPie} dataKey="value" nameKey="name" outerRadius={90} label>
+                    {statusPie.map((s) => (<Cell key={s.name} fill={PIE_COLORS[s.name]} />))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
       </div>
 
       {type === "trucks" && (
