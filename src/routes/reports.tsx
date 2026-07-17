@@ -18,7 +18,10 @@ import {
   PieChart, Pie, Cell, LineChart, Line,
 } from "recharts";
 
-export const Route = createFileRoute("/reports")({ component: ReportsPage });
+export const Route = createFileRoute("/reports")({
+  component: ReportsPage,
+  validateSearch: (s: Record<string, unknown>) => ({ period: typeof s.period === "string" ? s.period : undefined }),
+});
 
 type Range = "today" | "yesterday" | "week" | "last_week" | "month" | "last_month" | "year" | "fy" | "all";
 
