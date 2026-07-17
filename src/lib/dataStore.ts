@@ -1,23 +1,20 @@
 /**
  * ============================================================================
- *  DATA STORE — Sahil Road Lines ERP
+ *  DATA STORE — Sahil Road Lines ERP (Supabase-backed)
  * ----------------------------------------------------------------------------
- *  This module is the ONLY place that touches persistence.
- *  All UI reads/writes go through the async functions exported below.
+ *  Same exported functions/types as the original localStorage version —
+ *  every UI component that imports from this file needs zero changes.
  *
- *  Current implementation: in-memory state + localStorage (survives refresh).
- *
- *  ⚠️ To swap to Supabase later:
- *    - Replace the body of each exported function (getMemos, createMemo, ...)
- *      with a Supabase query.
- *    - Keep the same function signatures and Types.
- *    - Remove `persist()` calls; Supabase becomes source of truth.
- *    - Replace the `subscribe/emit` bus with Supabase realtime channels
- *      (or leave it for optimistic UI).
+ *  Audit log entries and status history are written automatically by database
+ *  triggers (see supabase_migration_2.sql) — this file does not write to
+ *  audit_log or memo_status_history directly, it just reads them back.
  * ============================================================================
  */
 
+import { supabase } from "./supabaseClient";
+
 // -----------------------------  TYPES  --------------------------------------
+// (unchanged from the original file)
 
 export type TruckStatus = "Available" | "Running" | "Maintenance" | "Inactive";
 export interface FleetTruck {
@@ -62,7 +59,7 @@ export const ALL_MEMO_STATUSES: MemoStatus[] = [
 export interface Memo {
   id: string;
   memoNumber: string;
-  dispatchDate: string; // ISO
+  dispatchDate: string;
   fromLocation: string;
   toLocation: string;
   transportName: string;
@@ -86,7 +83,7 @@ export interface Memo {
   tds: number;
   goodsMamuli: number;
   totalExpenses: number;
-  paidBy: string; // "SRL" | "KAREEM" | custom
+  paidBy: string;
   paymentMethod: string;
   finalPayable: number;
   finalPaymentDate?: string;
@@ -131,86 +128,206 @@ export interface Settings {
   darkMode: boolean;
 }
 
-interface DBShape {
-  trucks: FleetTruck[];
-  consignees: Consignee[];
-  memos: Memo[];
-  history: MemoStatusHistory[];
-  audit: AuditLogEntry[];
-  settings: Settings;
-  memoCounters: Record<string, number>; // year -> counter
+export type MemoInput = Omit<
+  Memo,
+  "id" | "memoNumber" | "isDeleted" | "createdAt" | "updatedAt" | "deletedAt"
+>;
+
+// -------------------------- ROW <-> APP TYPE MAPPING -------------------------
+// Supabase columns are snake_case; app types are camelCase.
+
+function rowToTruck(r: any): FleetTruck {
+  return {
+    id: r.id,
+    truckNumber: r.truck_number,
+    ownerName: r.owner_name ?? "",
+    ownerPhone: r.owner_phone ?? "",
+    driverName: r.driver_name ?? "",
+    driverPhone: r.driver_phone ?? "",
+    insuranceExpiry: r.insurance_expiry ?? undefined,
+    remarks: r.remarks ?? undefined,
+  };
+}
+function truckToRow(t: Partial<FleetTruck>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (t.truckNumber !== undefined) row.truck_number = t.truckNumber;
+  if (t.ownerName !== undefined) row.owner_name = t.ownerName;
+  if (t.ownerPhone !== undefined) row.owner_phone = t.ownerPhone;
+  if (t.driverName !== undefined) row.driver_name = t.driverName;
+  if (t.driverPhone !== undefined) row.driver_phone = t.driverPhone;
+  if (t.insuranceExpiry !== undefined) row.insurance_expiry = t.insuranceExpiry || null;
+  if (t.remarks !== undefined) row.remarks = t.remarks;
+  return row;
 }
 
-// ---------------------------- CONSTANTS -------------------------------------
+function rowToConsignee(r: any): Consignee {
+  return {
+    id: r.id,
+    companyName: r.company_name,
+    address: r.address ?? "",
+    contactPerson: r.contact_person ?? "",
+    phone: r.phone ?? "",
+    city: r.city ?? "",
+    state: r.state ?? "",
+    remarks: r.remarks ?? undefined,
+  };
+}
+function consigneeToRow(c: Partial<Consignee>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (c.companyName !== undefined) row.company_name = c.companyName;
+  if (c.address !== undefined) row.address = c.address;
+  if (c.contactPerson !== undefined) row.contact_person = c.contactPerson;
+  if (c.phone !== undefined) row.phone = c.phone;
+  if (c.city !== undefined) row.city = c.city;
+  if (c.state !== undefined) row.state = c.state;
+  if (c.remarks !== undefined) row.remarks = c.remarks;
+  return row;
+}
 
-const STORAGE_KEY = "srl_erp_v1";
-const ACTOR = "Admin";
-
-const DEFAULT_SETTINGS: Settings = {
-  companyName: "SAHIL ROAD LINES",
-  address:
-    "D.No. 12-3-45, Old Gajuwaka, Visakhapatnam - 530026, Andhra Pradesh",
-  phone: "+91 98765 43210",
-  email: "office@sahilroadlines.in",
-  website: "www.sahilroadlines.in",
-  logoUrl: "",
-  gst: "37ABCDE1234F1Z5",
-  jurisdictionText: "Subject to Visakhapatnam Jurisdiction",
-  terms:
-    "1. Goods once dispatched are at owner's risk.\n2. Company is not responsible for leakage, breakage or shortage.\n3. All disputes subject to Visakhapatnam jurisdiction only.\n4. Freight to be paid within 15 days of delivery.\n5. Detention charges applicable after 24 hours of unloading.",
-  darkMode: false,
+const MEMO_FIELD_MAP: Record<string, string> = {
+  memoNumber: "memo_number",
+  dispatchDate: "dispatch_date",
+  fromLocation: "from_location",
+  toLocation: "to_location",
+  transportName: "transport_name",
+  consigneeId: "consignee_id",
+  truckId: "truck_id",
+  driverName: "driver_name",
+  ownerName: "owner_name",
+  ownerPhone: "owner_phone",
+  materialName: "material_name",
+  weightTons: "weight_tons",
+  ratePerTon: "rate_per_ton",
+  netFreight: "net_freight",
+  unloadingDate: "unloading_date",
+  lrReceivedDate: "lr_received_date",
+  lrSubmittedDate: "lr_submitted_date",
+  description: "description",
+  advance: "advance",
+  balance: "balance",
+  commission: "commission",
+  loadingCharges: "loading_charges",
+  tds: "tds",
+  goodsMamuli: "goods_mamuli",
+  totalExpenses: "total_expenses",
+  paidBy: "paid_by",
+  paymentMethod: "payment_method",
+  finalPayable: "final_payable",
+  finalPaymentDate: "final_payment_date",
+  internalNotes: "internal_notes",
+  status: "status",
+  remarks: "remarks",
+  isDeleted: "is_deleted",
+  deletedAt: "deleted_at",
 };
 
-// ------------------------------- DB -----------------------------------------
-
-let db: DBShape = emptyDb();
-
-function emptyDb(): DBShape {
+function rowToMemo(r: any): Memo {
   return {
-    trucks: [],
-    consignees: [],
-    memos: [],
-    history: [],
-    audit: [],
-    settings: { ...DEFAULT_SETTINGS },
-    memoCounters: {},
+    id: r.id,
+    memoNumber: r.memo_number,
+    dispatchDate: r.dispatch_date,
+    fromLocation: r.from_location ?? "",
+    toLocation: r.to_location ?? "",
+    transportName: r.transport_name ?? "",
+    consigneeId: r.consignee_id,
+    truckId: r.truck_id,
+    driverName: r.driver_name ?? "",
+    ownerName: r.owner_name ?? "",
+    ownerPhone: r.owner_phone ?? "",
+    materialName: r.material_name ?? "",
+    weightTons: Number(r.weight_tons ?? 0),
+    ratePerTon: Number(r.rate_per_ton ?? 0),
+    netFreight: Number(r.net_freight ?? 0),
+    unloadingDate: r.unloading_date ?? undefined,
+    lrReceivedDate: r.lr_received_date ?? undefined,
+    lrSubmittedDate: r.lr_submitted_date ?? undefined,
+    description: r.description ?? undefined,
+    advance: Number(r.advance ?? 0),
+    balance: Number(r.balance ?? 0),
+    commission: Number(r.commission ?? 0),
+    loadingCharges: Number(r.loading_charges ?? 0),
+    tds: Number(r.tds ?? 0),
+    goodsMamuli: Number(r.goods_mamuli ?? 0),
+    totalExpenses: Number(r.total_expenses ?? 0),
+    paidBy: r.paid_by ?? "",
+    paymentMethod: r.payment_method ?? "",
+    finalPayable: Number(r.final_payable ?? 0),
+    finalPaymentDate: r.final_payment_date ?? undefined,
+    internalNotes: r.internal_notes ?? undefined,
+    status: r.status as MemoStatus,
+    remarks: r.remarks ?? undefined,
+    isDeleted: r.is_deleted,
+    deletedAt: r.deleted_at ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
 }
 
-function isBrowser() {
-  return typeof window !== "undefined";
-}
-
-function load() {
-  if (!isBrowser()) return;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      db = { ...emptyDb(), ...(JSON.parse(raw) as DBShape) };
-      db.settings = { ...DEFAULT_SETTINGS, ...db.settings };
-      // Migration: retire legacy statuses
-      db.memos.forEach((m) => {
-        const s = m.status as string;
-        if (s === "Running") m.status = "Dispatched";
-        else if (s === "Cancelled") m.status = "Payment Pending";
-      });
-      return;
+function memoToRow(m: Partial<MemoInput>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  for (const [key, col] of Object.entries(MEMO_FIELD_MAP)) {
+    const val = (m as Record<string, unknown>)[key];
+    if (val !== undefined) {
+      row[col] = val === "" && col.endsWith("_date") ? null : val;
     }
-  } catch {
-    /* corrupt store — reseed */
   }
-  db = emptyDb();
-  seed();
-  persist();
+  return row;
 }
 
-function persist() {
-  if (!isBrowser()) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-  emit();
+function rowToSettings(r: any): Settings {
+  return {
+    companyName: r.company_name ?? "",
+    address: r.address ?? "",
+    phone: r.phone ?? "",
+    email: r.email ?? "",
+    website: r.website ?? "",
+    logoUrl: r.logo_url ?? "",
+    gst: r.gst ?? "",
+    jurisdictionText: r.jurisdiction_text ?? "",
+    terms: r.terms ?? "",
+    darkMode: !!r.dark_mode,
+  };
+}
+function settingsToRow(s: Partial<Settings>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (s.companyName !== undefined) row.company_name = s.companyName;
+  if (s.address !== undefined) row.address = s.address;
+  if (s.phone !== undefined) row.phone = s.phone;
+  if (s.email !== undefined) row.email = s.email;
+  if (s.website !== undefined) row.website = s.website;
+  if (s.logoUrl !== undefined) row.logo_url = s.logoUrl;
+  if (s.gst !== undefined) row.gst = s.gst;
+  if (s.jurisdictionText !== undefined) row.jurisdiction_text = s.jurisdictionText;
+  if (s.terms !== undefined) row.terms = s.terms;
+  if (s.darkMode !== undefined) row.dark_mode = s.darkMode;
+  return row;
 }
 
-// -------------------------- SUBSCRIBE BUS -----------------------------------
+function rowToAudit(r: any): AuditLogEntry {
+  return {
+    id: r.id,
+    actor: r.actor,
+    action: r.action,
+    entityType: r.entity_type,
+    entityId: r.entity_id,
+    oldValue: r.old_value,
+    newValue: r.new_value,
+    createdAt: r.created_at,
+  };
+}
+function rowToHistory(r: any): MemoStatusHistory {
+  return {
+    id: r.id,
+    memoId: r.memo_id,
+    oldStatus: r.old_status,
+    newStatus: r.new_status,
+    changedAt: r.changed_at,
+  };
+}
+
+// -------------------------- REALTIME SUBSCRIBE BUS ---------------------------
+// Same subscribe() API as before — components don't need to change.
+// Internally now backed by Supabase Realtime instead of a manual local emit.
 
 const listeners = new Set<() => void>();
 export function subscribe(fn: () => void) {
@@ -221,519 +338,296 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
-// -------------------------- HELPERS -----------------------------------------
-
-const uid = () =>
-  Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-
-const nowIso = () => new Date().toISOString();
-
-function audit(
-  action: string,
-  entityType: AuditLogEntry["entityType"],
-  entityId: string,
-  oldValue?: unknown,
-  newValue?: unknown,
-) {
-  db.audit.unshift({
-    id: uid(),
-    actor: ACTOR,
-    action,
-    entityType,
-    entityId,
-    oldValue,
-    newValue,
-    createdAt: nowIso(),
+let realtimeInitialized = false;
+function initRealtime() {
+  if (realtimeInitialized || typeof window === "undefined") return;
+  realtimeInitialized = true;
+  const tables = [
+    "memos",
+    "fleet_trucks",
+    "consignees",
+    "audit_log",
+    "memo_status_history",
+    "settings",
+  ];
+  tables.forEach((table) => {
+    supabase
+      .channel(`realtime-${table}`)
+      .on("postgres_changes", { event: "*", schema: "public", table }, () => emit())
+      .subscribe();
   });
 }
-
-function nextMemoNumber(): string {
-  const year = new Date().getFullYear();
-  const c = (db.memoCounters[year] ?? 0) + 1;
-  db.memoCounters[year] = c;
-  return `SRL-${year}-${String(c).padStart(6, "0")}`;
-}
-
-// -------------------------- SEED --------------------------------------------
-
-function seed() {
-  const trucks: FleetTruck[] = [
-    {
-      id: uid(),
-      truckNumber: "AP 31 AB 1234",
-      ownerName: "Sahil Khan",
-      ownerPhone: "+91 90000 11111",
-      driverName: "Ramesh Kumar",
-      driverPhone: "+91 90000 22222",
-      insuranceExpiry: "2026-11-20",
-    },
-    {
-      id: uid(),
-      truckNumber: "AP 31 CD 5678",
-      ownerName: "Kareem Bhai",
-      ownerPhone: "+91 90000 33333",
-      driverName: "Suresh Reddy",
-      driverPhone: "+91 90000 44444",
-      insuranceExpiry: "2026-08-01",
-    },
-    {
-      id: uid(),
-      truckNumber: "TS 09 EF 9012",
-      ownerName: "Sahil Khan",
-      ownerPhone: "+91 90000 11111",
-      driverName: "Mohan Rao",
-      driverPhone: "+91 90000 55555",
-      insuranceExpiry: "2026-09-30",
-    },
-    {
-      id: uid(),
-      truckNumber: "AP 05 GH 3456",
-      ownerName: "Ravi Naidu",
-      ownerPhone: "+91 90000 66666",
-      driverName: "Anwar Ali",
-      driverPhone: "+91 90000 77777",
-      insuranceExpiry: "2026-10-10",
-    },
-  ];
-  db.trucks = trucks;
-
-  const consignees: Consignee[] = [
-    {
-      id: uid(),
-      companyName: "Vizag Steel Traders",
-      address: "Plot 24, Auto Nagar",
-      contactPerson: "Mr. Raju",
-      phone: "+91 90111 22222",
-      city: "Visakhapatnam",
-      state: "Andhra Pradesh",
-    },
-    {
-      id: uid(),
-      companyName: "Hyderabad Cement Depot",
-      address: "Beside Ring Road, Kukatpally",
-      contactPerson: "Mr. Naveen",
-      phone: "+91 90222 33333",
-      city: "Hyderabad",
-      state: "Telangana",
-    },
-    {
-      id: uid(),
-      companyName: "Chennai Iron Works",
-      address: "Ambattur Industrial Estate",
-      contactPerson: "Mr. Selvam",
-      phone: "+91 90333 44444",
-      city: "Chennai",
-      state: "Tamil Nadu",
-    },
-    {
-      id: uid(),
-      companyName: "Bengaluru Logistics Hub",
-      address: "Peenya Phase 2",
-      contactPerson: "Mr. Kumar",
-      phone: "+91 90444 55555",
-      city: "Bengaluru",
-      state: "Karnataka",
-    },
-    {
-      id: uid(),
-      companyName: "Kolkata Fertilizers Ltd",
-      address: "Salt Lake Sector V",
-      contactPerson: "Mr. Bose",
-      phone: "+91 90555 66666",
-      city: "Kolkata",
-      state: "West Bengal",
-    },
-  ];
-  db.consignees = consignees;
-
-  // Memos across the last 2 months
-  const today = new Date();
-  const daysAgo = (n: number) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() - n);
-    return d.toISOString();
-  };
-
-  const materials = ["Cement", "Steel Rods", "Iron Scrap", "Rice Bags", "Fertilizer", "Coal", "Bricks"];
-  const cities: Array<[string, string]> = [
-    ["Visakhapatnam", "Hyderabad"],
-    ["Visakhapatnam", "Chennai"],
-    ["Visakhapatnam", "Bengaluru"],
-    ["Visakhapatnam", "Kolkata"],
-    ["Hyderabad", "Chennai"],
-  ];
-  const statuses: MemoStatus[] = [
-    "Completed",
-    "Dispatched",
-    "Payment Pending",
-    "Delivered",
-    "LR Received",
-    "LR Submitted",
-    "Dispatched",
-    "Completed",
-    "Payment Pending",
-    "Delivered",
-  ];
-  const dayOffsets = [0, 2, 5, 9, 14, 20, 27, 35, 45, 55];
-
-  for (let i = 0; i < 10; i++) {
-    const truck = trucks[i % trucks.length];
-    const consignee = consignees[i % consignees.length];
-    const [from, to] = cities[i % cities.length];
-    const material = materials[i % materials.length];
-    const weight = 10 + (i % 6) * 2.5;
-    const rate = 800 + (i % 5) * 150;
-    const netFreight = Math.round(weight * rate);
-    const advance = Math.round(netFreight * 0.4);
-    const commission = 1500 + i * 200;
-    const loading = 800 + i * 100;
-    const tds = Math.round(netFreight * 0.01);
-    const mamuli = 300;
-    const totalExpenses = commission + loading + tds + mamuli;
-    const status = statuses[i];
-    const dispatch = daysAgo(dayOffsets[i]);
-    const memoNumber = nextMemoNumber();
-    const memo: Memo = {
-      id: uid(),
-      memoNumber,
-      dispatchDate: dispatch,
-      fromLocation: from,
-      toLocation: to,
-      transportName: i % 2 === 0 ? "SRL Direct" : "Kareem Transports",
-      consigneeId: consignee.id,
-      truckId: truck.id,
-      driverName: truck.driverName,
-      ownerName: truck.ownerName,
-      ownerPhone: truck.ownerPhone,
-      materialName: material,
-      weightTons: weight,
-      ratePerTon: rate,
-      netFreight,
-      unloadingDate:
-        status !== "Dispatched"
-          ? daysAgo(Math.max(0, dayOffsets[i] - 2))
-          : undefined,
-      lrReceivedDate:
-        status === "LR Received" ||
-        status === "LR Submitted" ||
-        status === "Completed"
-          ? daysAgo(Math.max(0, dayOffsets[i] - 3))
-          : undefined,
-      lrSubmittedDate:
-        status === "LR Submitted" || status === "Completed"
-          ? daysAgo(Math.max(0, dayOffsets[i] - 4))
-          : undefined,
-      description: `${material} shipment from ${from} to ${to}`,
-      advance,
-      balance: netFreight - advance,
-      commission,
-      loadingCharges: loading,
-      tds,
-      goodsMamuli: mamuli,
-      totalExpenses,
-      paidBy: i % 3 === 0 ? "KAREEM" : "SRL",
-      paymentMethod: i % 2 === 0 ? "Bank Transfer" : "PhonePe",
-      finalPayable: netFreight - advance - totalExpenses,
-      finalPaymentDate: status === "Completed" ? daysAgo(Math.max(0, dayOffsets[i] - 5)) : undefined,
-      internalNotes: "",
-      status,
-      remarks: "",
-      isDeleted: false,
-      createdAt: dispatch,
-      updatedAt: dispatch,
-    };
-    db.memos.push(memo);
-    db.history.push({
-      id: uid(),
-      memoId: memo.id,
-      oldStatus: null,
-      newStatus: status,
-      changedAt: dispatch,
-    });
-    audit("Created memo (seed)", "Memo", memo.id, null, memo);
-  }
-}
-
-// -------------------------- INIT --------------------------------------------
-
-load();
+initRealtime();
 
 // -------------------------- SETTINGS ----------------------------------------
 
 export async function getSettings(): Promise<Settings> {
-  return { ...db.settings };
+  const { data, error } = await supabase.from("settings").select("*").limit(1).single();
+  if (error) throw error;
+  return rowToSettings(data);
 }
+
 export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
-  const old = { ...db.settings };
-  db.settings = { ...db.settings, ...patch };
-  audit("Updated settings", "Settings", "settings", old, db.settings);
-  persist();
-  return { ...db.settings };
+  const { data: existing, error: selErr } = await supabase
+    .from("settings")
+    .select("id")
+    .limit(1)
+    .single();
+  if (selErr) throw selErr;
+  const { data, error } = await supabase
+    .from("settings")
+    .update(settingsToRow(patch))
+    .eq("id", existing.id)
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToSettings(data);
 }
 
 // -------------------------- TRUCKS ------------------------------------------
 
 export async function getTrucks(): Promise<FleetTruck[]> {
-  return [...db.trucks];
+  const { data, error } = await supabase.from("fleet_trucks").select("*").order("truck_number");
+  if (error) throw error;
+  return (data ?? []).map(rowToTruck);
 }
 export async function getTruck(id: string): Promise<FleetTruck | undefined> {
-  return db.trucks.find((t) => t.id === id);
+  const { data, error } = await supabase.from("fleet_trucks").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? rowToTruck(data) : undefined;
 }
-export async function createTruck(
-  input: Omit<FleetTruck, "id">,
-): Promise<FleetTruck> {
-  if (
-    db.trucks.some(
-      (t) =>
-        t.truckNumber.trim().toLowerCase() ===
-        input.truckNumber.trim().toLowerCase(),
-    )
-  ) {
-    throw new Error("Truck number already exists");
+export async function createTruck(input: Omit<FleetTruck, "id">): Promise<FleetTruck> {
+  const { data, error } = await supabase
+    .from("fleet_trucks")
+    .insert(truckToRow(input))
+    .select()
+    .single();
+  if (error) {
+    if (error.code === "23505") throw new Error("Truck number already exists");
+    throw error;
   }
-  const t: FleetTruck = { ...input, id: uid() };
-  db.trucks.push(t);
-  audit("Created truck", "Truck", t.id, null, t);
-  persist();
-  return t;
+  return rowToTruck(data);
 }
-export async function updateTruck(
-  id: string,
-  patch: Partial<FleetTruck>,
-): Promise<FleetTruck> {
-  const idx = db.trucks.findIndex((t) => t.id === id);
-  if (idx < 0) throw new Error("Truck not found");
-  if (
-    patch.truckNumber &&
-    db.trucks.some(
-      (t) =>
-        t.id !== id &&
-        t.truckNumber.trim().toLowerCase() ===
-          patch.truckNumber!.trim().toLowerCase(),
-    )
-  ) {
-    throw new Error("Truck number already exists");
+export async function updateTruck(id: string, patch: Partial<FleetTruck>): Promise<FleetTruck> {
+  const { data, error } = await supabase
+    .from("fleet_trucks")
+    .update(truckToRow(patch))
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) {
+    if (error.code === "23505") throw new Error("Truck number already exists");
+    throw error;
   }
-  const old = db.trucks[idx];
-  db.trucks[idx] = { ...old, ...patch };
-  audit("Updated truck", "Truck", id, old, db.trucks[idx]);
-  persist();
-  return db.trucks[idx];
+  return rowToTruck(data);
 }
 export async function deleteTruck(id: string): Promise<void> {
-  const old = db.trucks.find((t) => t.id === id);
-  db.trucks = db.trucks.filter((t) => t.id !== id);
-  audit("Deleted truck", "Truck", id, old, null);
-  persist();
+  const { error } = await supabase.from("fleet_trucks").delete().eq("id", id);
+  if (error) throw error;
 }
 
 // -------------------------- CONSIGNEES --------------------------------------
 
 export async function getConsignees(): Promise<Consignee[]> {
-  return [...db.consignees];
+  const { data, error } = await supabase.from("consignees").select("*").order("company_name");
+  if (error) throw error;
+  return (data ?? []).map(rowToConsignee);
 }
 export async function getConsignee(id: string): Promise<Consignee | undefined> {
-  return db.consignees.find((c) => c.id === id);
+  const { data, error } = await supabase.from("consignees").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? rowToConsignee(data) : undefined;
 }
-export async function createConsignee(
-  input: Omit<Consignee, "id">,
-): Promise<Consignee> {
-  if (
-    db.consignees.some(
-      (c) =>
-        c.companyName.trim().toLowerCase() ===
-        input.companyName.trim().toLowerCase(),
-    )
-  ) {
-    throw new Error("Consignee company name already exists");
+export async function createConsignee(input: Omit<Consignee, "id">): Promise<Consignee> {
+  const { data, error } = await supabase
+    .from("consignees")
+    .insert(consigneeToRow(input))
+    .select()
+    .single();
+  if (error) {
+    if (error.code === "23505") throw new Error("Consignee company name already exists");
+    throw error;
   }
-  const c: Consignee = { ...input, id: uid() };
-  db.consignees.push(c);
-  audit("Created consignee", "Consignee", c.id, null, c);
-  persist();
-  return c;
+  return rowToConsignee(data);
 }
-export async function updateConsignee(
-  id: string,
-  patch: Partial<Consignee>,
-): Promise<Consignee> {
-  const idx = db.consignees.findIndex((c) => c.id === id);
-  if (idx < 0) throw new Error("Consignee not found");
-  if (
-    patch.companyName &&
-    db.consignees.some(
-      (c) =>
-        c.id !== id &&
-        c.companyName.trim().toLowerCase() ===
-          patch.companyName!.trim().toLowerCase(),
-    )
-  ) {
-    throw new Error("Consignee company name already exists");
+export async function updateConsignee(id: string, patch: Partial<Consignee>): Promise<Consignee> {
+  const { data, error } = await supabase
+    .from("consignees")
+    .update(consigneeToRow(patch))
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) {
+    if (error.code === "23505") throw new Error("Consignee company name already exists");
+    throw error;
   }
-  const old = db.consignees[idx];
-  db.consignees[idx] = { ...old, ...patch };
-  audit("Updated consignee", "Consignee", id, old, db.consignees[idx]);
-  persist();
-  return db.consignees[idx];
+  return rowToConsignee(data);
 }
 export async function deleteConsignee(id: string): Promise<void> {
-  const old = db.consignees.find((c) => c.id === id);
-  db.consignees = db.consignees.filter((c) => c.id !== id);
-  audit("Deleted consignee", "Consignee", id, old, null);
-  persist();
+  const { error } = await supabase.from("consignees").delete().eq("id", id);
+  if (error) throw error;
 }
 
 // -------------------------- MEMOS -------------------------------------------
 
 export async function getMemos(opts?: { includeDeleted?: boolean }): Promise<Memo[]> {
-  return db.memos.filter((m) => opts?.includeDeleted || !m.isDeleted);
+  let q = supabase.from("memos").select("*").order("dispatch_date", { ascending: false });
+  if (!opts?.includeDeleted) q = q.eq("is_deleted", false);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map(rowToMemo);
 }
 export async function getTrashedMemos(): Promise<Memo[]> {
-  return db.memos.filter((m) => m.isDeleted);
+  const { data, error } = await supabase
+    .from("memos")
+    .select("*")
+    .eq("is_deleted", true)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(rowToMemo);
 }
 export async function getMemo(id: string): Promise<Memo | undefined> {
-  return db.memos.find((m) => m.id === id);
+  const { data, error } = await supabase.from("memos").select("*").eq("id", id).maybeSingle();
+  if (error) throw error;
+  return data ? rowToMemo(data) : undefined;
 }
 export async function peekNextMemoNumber(): Promise<string> {
   const year = new Date().getFullYear();
-  const c = (db.memoCounters[year] ?? 0) + 1;
-  return `SRL-${year}-${String(c).padStart(6, "0")}`;
+  const { data, error } = await supabase
+    .from("memo_counters")
+    .select("counter")
+    .eq("year", year)
+    .maybeSingle();
+  if (error) throw error;
+  const next = (data?.counter ?? 0) + 1;
+  return `SRL-${year}-${String(next).padStart(6, "0")}`;
 }
-
-export type MemoInput = Omit<
-  Memo,
-  "id" | "memoNumber" | "isDeleted" | "createdAt" | "updatedAt" | "deletedAt"
->;
 
 export async function createMemo(input: MemoInput): Promise<Memo> {
-  const memoNumber = nextMemoNumber();
-  const m: Memo = {
-    ...input,
-    id: uid(),
-    memoNumber,
-    isDeleted: false,
-    createdAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-  db.memos.unshift(m);
-  db.history.push({
-    id: uid(),
-    memoId: m.id,
-    oldStatus: null,
-    newStatus: m.status,
-    changedAt: nowIso(),
-  });
-  audit("Created memo", "Memo", m.id, null, m);
-  persist();
-  return m;
+  const { data: memoNumber, error: numErr } = await supabase.rpc("next_memo_number");
+  if (numErr) throw numErr;
+  const row = { ...memoToRow(input), memo_number: memoNumber, is_deleted: false };
+  const { data, error } = await supabase.from("memos").insert(row).select().single();
+  if (error) throw error;
+  return rowToMemo(data);
 }
-export async function updateMemo(
-  id: string,
-  patch: Partial<MemoInput>,
-): Promise<Memo> {
-  const idx = db.memos.findIndex((m) => m.id === id);
-  if (idx < 0) throw new Error("Memo not found");
-  const old = db.memos[idx];
-  const updated: Memo = { ...old, ...patch, updatedAt: nowIso() };
-  db.memos[idx] = updated;
-  if (patch.status && patch.status !== old.status) {
-    db.history.push({
-      id: uid(),
-      memoId: id,
-      oldStatus: old.status,
-      newStatus: patch.status,
-      changedAt: nowIso(),
-    });
-    audit(`Status: ${old.status} → ${patch.status}`, "Memo", id, old.status, patch.status);
-  }
-  audit("Updated memo", "Memo", id, old, updated);
-  persist();
-  return updated;
+export async function updateMemo(id: string, patch: Partial<MemoInput>): Promise<Memo> {
+  const { data, error } = await supabase
+    .from("memos")
+    .update(memoToRow(patch))
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return rowToMemo(data);
 }
 export async function deleteMemo(id: string): Promise<void> {
-  const idx = db.memos.findIndex((m) => m.id === id);
-  if (idx < 0) return;
-  const old = db.memos[idx];
-  db.memos[idx] = { ...old, isDeleted: true, deletedAt: nowIso() };
-  audit("Moved to trash", "Memo", id, old, db.memos[idx]);
-  persist();
+  const { error } = await supabase
+    .from("memos")
+    .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
 }
 export async function restoreMemo(id: string): Promise<void> {
-  const idx = db.memos.findIndex((m) => m.id === id);
-  if (idx < 0) return;
-  const old = db.memos[idx];
-  db.memos[idx] = { ...old, isDeleted: false, deletedAt: undefined };
-  audit("Restored from trash", "Memo", id, old, db.memos[idx]);
-  persist();
+  const { error } = await supabase
+    .from("memos")
+    .update({ is_deleted: false, deleted_at: null })
+    .eq("id", id);
+  if (error) throw error;
 }
 export async function permanentlyDeleteMemo(id: string): Promise<void> {
-  const old = db.memos.find((m) => m.id === id);
-  db.memos = db.memos.filter((m) => m.id !== id);
-  audit("Permanently deleted", "Memo", id, old, null);
-  persist();
+  const { error } = await supabase.from("memos").delete().eq("id", id);
+  if (error) throw error;
 }
 
 // -------------------------- LOGS --------------------------------------------
+// Written automatically by database triggers — these functions only read.
 
 export async function getAuditLog(): Promise<AuditLogEntry[]> {
-  return [...db.audit];
+  const { data, error } = await supabase
+    .from("audit_log")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return (data ?? []).map(rowToAudit);
 }
 export async function getMemoHistory(memoId: string): Promise<MemoStatusHistory[]> {
-  return db.history.filter((h) => h.memoId === memoId);
+  const { data, error } = await supabase
+    .from("memo_status_history")
+    .select("*")
+    .eq("memo_id", memoId)
+    .order("changed_at");
+  if (error) throw error;
+  return (data ?? []).map(rowToHistory);
 }
 
 // -------------------------- DEV UTIL ----------------------------------------
+// ⚠️ Destructive — clears all real data. Use with care, not wired to any UI button.
 
-export function _resetStore() {
-  if (isBrowser()) localStorage.removeItem(STORAGE_KEY);
-  db = emptyDb();
-  seed();
-  persist();
+export async function _resetStore(): Promise<void> {
+  console.warn("_resetStore: clearing all data from Supabase — this cannot be undone.");
+  await supabase.from("memo_status_history").delete().not("id", "is", null);
+  await supabase.from("audit_log").delete().not("id", "is", null);
+  await supabase.from("memos").delete().not("id", "is", null);
+  await supabase.from("consignees").delete().not("id", "is", null);
+  await supabase.from("fleet_trucks").delete().not("id", "is", null);
+  await supabase.from("memo_counters").delete().not("year", "is", null);
 }
 
 // -------------------------- BACKUP / RESTORE --------------------------------
 
 export async function exportAllData(): Promise<string> {
+  const [trucks, consignees, memos, settings, auditData, historyData] = await Promise.all([
+    getTrucks(),
+    getConsignees(),
+    getMemos({ includeDeleted: true }),
+    getSettings(),
+    supabase.from("audit_log").select("*"),
+    supabase.from("memo_status_history").select("*"),
+  ]);
+  const audit = (auditData.data ?? []).map(rowToAudit);
+  const history = (historyData.data ?? []).map(rowToHistory);
   return JSON.stringify(
     {
-      version: 1,
-      exportedAt: nowIso(),
-      trucks: db.trucks,
-      consignees: db.consignees,
-      memos: db.memos,
-      history: db.history,
-      audit: db.audit,
-      settings: db.settings,
-      memoCounters: db.memoCounters,
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      trucks,
+      consignees,
+      memos,
+      history,
+      audit,
+      settings,
     },
     null,
     2,
   );
 }
 
-export async function importAllData(json: string): Promise<{
-  trucks: number; consignees: number; memos: number;
-}> {
-  const parsed = JSON.parse(json) as Partial<DBShape>;
-  const next: DBShape = {
-    trucks: parsed.trucks ?? [],
-    consignees: parsed.consignees ?? [],
-    memos: parsed.memos ?? [],
-    history: parsed.history ?? [],
-    audit: parsed.audit ?? [],
-    settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
-    memoCounters: parsed.memoCounters ?? {},
-  };
-  db = next;
-  // Migration for imported data
-  db.memos.forEach((m) => {
-    const s = m.status as string;
-    if (s === "Running") m.status = "Dispatched";
-    else if (s === "Cancelled") m.status = "Payment Pending";
-  });
-  audit("Imported data", "Settings", "backup", null, {
-    trucks: db.trucks.length, consignees: db.consignees.length, memos: db.memos.length,
-  });
-  persist();
-  return { trucks: db.trucks.length, consignees: db.consignees.length, memos: db.memos.length };
+export async function importAllData(
+  json: string,
+): Promise<{ trucks: number; consignees: number; memos: number }> {
+  const parsed = JSON.parse(json);
+  let tCount = 0,
+    cCount = 0,
+    mCount = 0;
+
+  for (const t of parsed.trucks ?? []) {
+    const { id, ...rest } = t;
+    const { error } = await supabase.from("fleet_trucks").upsert({ id, ...truckToRow(rest) });
+    if (!error) tCount++;
+  }
+  for (const c of parsed.consignees ?? []) {
+    const { id, ...rest } = c;
+    const { error } = await supabase.from("consignees").upsert({ id, ...consigneeToRow(rest) });
+    if (!error) cCount++;
+  }
+  for (const m of parsed.memos ?? []) {
+    const { id, memoNumber, ...rest } = m;
+    const { error } = await supabase
+      .from("memos")
+      .upsert({ id, memo_number: memoNumber, ...memoToRow(rest) });
+    if (!error) mCount++;
+  }
+  return { trucks: tCount, consignees: cCount, memos: mCount };
 }

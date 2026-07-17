@@ -9,6 +9,8 @@ import {
 import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { getSettings } from "@/lib/dataStore";
+import { AuthProvider, useAuth } from "@/lib/AuthContext";
+import LoginPage from "@/components/LoginPage";
 
 import appCss from "../styles.css?url";
 
@@ -88,16 +90,49 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  useEffect(() => {
-    // apply saved dark-mode class on first mount
-    getSettings().then((s) => {
-      document.documentElement.classList.toggle("dark", s.darkMode);
-    });
-  }, []);
   return (
     <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+}
+
+// Gates the entire app on login. Crucially, getSettings() (a Supabase query)
+// is only ever called AFTER a session exists — this matters once RLS is
+// tightened to require authentication, since an unauthenticated call would
+// otherwise fail before the login screen even had a chance to render.
+function AuthGate() {
+  const { session, loading } = useAuth();
+
+  useEffect(() => {
+    if (!session) return;
+    getSettings()
+      .then((s) => {
+        document.documentElement.classList.toggle("dark", s.darkMode);
+      })
+      .catch(() => {
+        // settings fetch failing shouldn't block the app from rendering
+      });
+  }, [session]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-sm text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginPage />;
+  }
+
+  return (
+    <>
       <Outlet />
       <Toaster richColors position="top-right" />
-    </QueryClientProvider>
+    </>
   );
 }
