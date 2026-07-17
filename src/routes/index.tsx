@@ -66,12 +66,12 @@ function Dashboard() {
   const todayExpenses = today.reduce((s, x) => s + (x.totalExpenses || 0), 0);
   const todayProfit = todayRevenue - todayExpenses;
   const monthlyRevenue = monthly.reduce((s, x) => s + (x.netFreight || 0), 0);
-  const running = m.filter((x) => x.status === "Running" || x.status === "Dispatched").length;
+  const running = m.filter((x) => x.status === "Dispatched").length;
   const completed = m.filter((x) => x.status === "Completed").length;
-  const pendingDeliveries = m.filter((x) => ["Dispatched", "Running"].includes(x.status)).length;
+  const pendingDeliveries = m.filter((x) => x.status === "Dispatched").length;
   const pendingPayment = m.filter((x) => x.status === "Payment Pending");
   const pendingPaymentAmount = pendingPayment.reduce((s, x) => s + (x.balance || 0), 0);
-  const collectionDue = m.filter((x) => x.status !== "Completed" && x.status !== "Cancelled").reduce((s, x) => s + (x.balance || 0), 0);
+  const collectionDue = m.filter((x) => x.status !== "Completed").reduce((s, x) => s + (x.balance || 0), 0);
 
   const truckCounts: Record<string, number> = {};
   const truckAmt: Record<string, number> = {};
@@ -86,14 +86,15 @@ function Dashboard() {
   const topDriver = Object.keys(driverCounts).sort((a, b) => driverCounts[b] - driverCounts[a])[0];
 
   const go = (filter: string) => nav({ to: "/register", search: { f: filter } as never });
+  const goReport = (period: string) => nav({ to: "/reports", search: { period } as never });
 
   return (
     <AppShell title="Dashboard" breadcrumb="Home / Dashboard">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Today's Memos" value={String(today.length)} icon={ReceiptText} tone="blue" onClick={() => go("today")} />
-        <KpiCard label="Today's Revenue" value={formatMoney(todayRevenue)} icon={IndianRupee} tone="green" onClick={() => go("today")} />
-        <KpiCard label="Today's Expenses" value={formatMoney(todayExpenses)} icon={TrendingDown} tone="red" onClick={() => go("today")} />
-        <KpiCard label="Today's Profit" value={formatMoney(todayProfit)} icon={TrendingUp} tone="green" valueColor="text-emerald-600" onClick={() => go("today")} />
+        <KpiCard label="Today's Revenue" value={formatMoney(todayRevenue)} icon={IndianRupee} tone="green" onClick={() => goReport("today")} />
+        <KpiCard label="Today's Expenses" value={formatMoney(todayExpenses)} icon={TrendingDown} tone="red" onClick={() => goReport("today")} />
+        <KpiCard label="Today's Profit" value={formatMoney(todayProfit)} icon={TrendingUp} tone="green" valueColor="text-emerald-600" onClick={() => goReport("today")} />
 
         <KpiCard label="Running Trips" value={String(running)} icon={Truck} tone="blue" onClick={() => go("running")} />
         <KpiCard label="Completed Trips" value={String(completed)} icon={CheckCircle2} tone="green" onClick={() => go("completed")} />
@@ -101,7 +102,7 @@ function Dashboard() {
         <KpiCard label="Pending Payments" value={String(pendingPayment.length)} sub={formatMoney(pendingPaymentAmount) + " outstanding"} icon={AlertCircle} tone="orange" onClick={() => go("payment_pending")} />
 
         <KpiCard label="Collection Due" value={formatMoney(collectionDue)} icon={Wallet} tone="orange" onClick={() => go("collection_due")} />
-        <KpiCard label="Monthly Revenue" value={formatMoney(monthlyRevenue)} icon={Calendar} tone="indigo" onClick={() => go("month")} />
+        <KpiCard label="Monthly Revenue" value={formatMoney(monthlyRevenue)} icon={Calendar} tone="indigo" onClick={() => goReport("month")} />
         <KpiCard label="Total Trucks" value={String(trucks?.length ?? 0)} icon={Truck} tone="purple" onClick={() => nav({ to: "/fleet" })} />
         <KpiCard label="Total Consignees" value={String(consignees?.length ?? 0)} icon={Building2} tone="purple" onClick={() => nav({ to: "/consignees" })} />
 

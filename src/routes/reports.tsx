@@ -18,7 +18,10 @@ import {
   PieChart, Pie, Cell, LineChart, Line,
 } from "recharts";
 
-export const Route = createFileRoute("/reports")({ component: ReportsPage });
+export const Route = createFileRoute("/reports")({
+  component: ReportsPage,
+  validateSearch: (s: Record<string, unknown>) => ({ period: typeof s.period === "string" ? s.period : undefined }),
+});
 
 type Range = "today" | "yesterday" | "week" | "last_week" | "month" | "last_month" | "year" | "fy" | "all";
 
@@ -66,8 +69,8 @@ function ReportsPage() {
   const pendingPay = filtered.filter((x) => x.status === "Payment Pending").reduce((s, x) => s + x.balance, 0);
   const lrPendingCount = filtered.filter((x) => !x.lrSubmittedDate).length;
   const completed = filtered.filter((x) => x.status === "Completed").length;
-  const running = filtered.filter((x) => x.status === "Running" || x.status === "Dispatched").length;
-  const cancelled = filtered.filter((x) => x.status === "Cancelled").length;
+  const running = filtered.filter((x) => x.status === "Dispatched").length;
+  const pendingPayCount = filtered.filter((x) => x.status === "Payment Pending").length;
 
   const truckStats: Array<{ id: string; number: string; trips: number; revenue: number }> = [];
   const groupTruck: Record<string, { trips: number; revenue: number }> = {};
@@ -101,18 +104,18 @@ function ReportsPage() {
   }, [filtered]);
 
   const statusPie = useMemo(() => {
-    const buckets: Record<string, number> = { Completed: 0, Running: 0, Pending: 0, Cancelled: 0 };
+    const buckets: Record<string, number> = { Completed: 0, Dispatched: 0, Pending: 0, Delivered: 0 };
     filtered.forEach((m) => {
       if (m.status === "Completed") buckets.Completed++;
-      else if (m.status === "Running" || m.status === "Dispatched") buckets.Running++;
-      else if (m.status === "Cancelled") buckets.Cancelled++;
+      else if (m.status === "Dispatched") buckets.Dispatched++;
+      else if (m.status === "Delivered") buckets.Delivered++;
       else buckets.Pending++;
     });
     return Object.entries(buckets).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
   }, [filtered]);
 
   const PIE_COLORS: Record<string, string> = {
-    Completed: "#10b981", Running: "#3b82f6", Pending: "#f59e0b", Cancelled: "#ef4444",
+    Completed: "#10b981", Dispatched: "#3b82f6", Delivered: "#8b5cf6", Pending: "#f59e0b",
   };
 
   const exportSummary = (fmt: "xlsx" | "csv") => {
@@ -203,8 +206,8 @@ function ReportsPage() {
           <StatCard label="Profit" value={formatMoney(profit)} tone={profit >= 0 ? "text-emerald-600" : "text-red-600"} />
           <StatCard label="Pending Payment" value={formatMoney(pendingPay)} tone="text-orange-600" />
           <StatCard label="Completed Trips" value={String(completed)} />
-          <StatCard label="Running Trips" value={String(running)} />
-          <StatCard label="Cancelled Trips" value={String(cancelled)} />
+          <StatCard label="Dispatched" value={String(running)} />
+          <StatCard label="Payment Pending" value={String(pendingPayCount)} />
           <StatCard label="LR Pending" value={String(lrPendingCount)} />
         </div>
 

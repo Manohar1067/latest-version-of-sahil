@@ -49,7 +49,7 @@ export function AppShell({
   const [dark, setDark] = useState(false);
 
   const pendingPaymentMemos = (memos ?? []).filter((m) => m.status === "Payment Pending");
-  const runningMemos = (memos ?? []).filter((m) => m.status === "Running" || m.status === "Dispatched");
+  const runningMemos = (memos ?? []).filter((m) => m.status === "Dispatched");
   const pendingOutstanding = pendingPaymentMemos.reduce((s, m) => s + m.balance, 0);
   const notifCount = pendingPaymentMemos.length + runningMemos.length;
 

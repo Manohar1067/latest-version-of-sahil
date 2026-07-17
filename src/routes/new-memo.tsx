@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import {
   getTrucks, getConsignees, createMemo, updateMemo, getMemo, peekNextMemoNumber,
+  createTruck, createConsignee,
   ALL_MEMO_STATUSES,
   type FleetTruck, type Consignee, type MemoStatus, type MemoInput,
 } from "@/lib/dataStore";
@@ -178,15 +179,28 @@ function NewMemo() {
         <Section title="Transport Information">
           <Field label="From"><Input className="h-11" value={form.fromLocation} onChange={(e) => set("fromLocation", e.target.value)} /></Field>
           <Field label="To"><Input className="h-11" value={form.toLocation} onChange={(e) => set("toLocation", e.target.value)} /></Field>
-          <Field label="Transport Name"><Input className="h-11" value={form.transportName} onChange={(e) => set("transportName", e.target.value)} placeholder="Type or select" list="transports" />
-            <datalist id="transports"><option value="SRL Direct" /><option value="Kareem Transports" /></datalist>
+          <Field label="Transport Name">
+            <Combobox
+              options={Array.from(new Set(["SRL Direct", "Kareem Transports", form.transportName].filter(Boolean))).map((n) => ({ value: n, label: n }))}
+              value={form.transportName}
+              onChange={(v) => set("transportName", v)}
+              placeholder="Search or type transport…"
+              allowCustom
+              createLabel="Use"
+            />
           </Field>
           <Field label="Consignee" required>
             <Combobox
               options={(consignees ?? []).map((c) => ({ value: c.id, label: c.companyName, keywords: `${c.city} ${c.contactPerson}` }))}
               value={form.consigneeId}
               onChange={(v) => set("consigneeId", v)}
-              placeholder="Search consignee…"
+              onCreate={async (typed) => {
+                const c = await createConsignee({ companyName: typed, address: "", contactPerson: "", phone: "", city: "", state: "", remarks: "" });
+                toast.success(`Consignee "${c.companyName}" added`);
+                return c.id;
+              }}
+              createLabel="+ Add consignee"
+              placeholder="Search or add consignee…"
             />
           </Field>
         </Section>
@@ -197,7 +211,13 @@ function NewMemo() {
               options={(trucks ?? []).map((t) => ({ value: t.id, label: t.truckNumber, keywords: `${t.driverName} ${t.ownerName}` }))}
               value={form.truckId}
               onChange={onTruck}
-              placeholder="Search truck…"
+              onCreate={async (typed) => {
+                const t = await createTruck({ truckNumber: typed.toUpperCase(), ownerName: "", ownerPhone: "", driverName: "", driverPhone: "", insuranceExpiry: undefined, remarks: "" } as Omit<FleetTruck, "id">);
+                toast.success(`Truck ${t.truckNumber} added`);
+                return t.id;
+              }}
+              createLabel="+ Add truck"
+              placeholder="Search or add truck…"
             />
           </Field>
           <Field label="Driver Name"><Input className="h-11" value={form.driverName} onChange={(e) => set("driverName", e.target.value)} /></Field>

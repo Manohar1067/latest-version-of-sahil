@@ -32,7 +32,12 @@ export const Route = createFileRoute("/register")({
 
 function startOfMonth(d = new Date()) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 
-type ColKey = "truck" | "transport" | "destination" | "status";
+// Register list supports per-column excel-style filters; each key names a column.
+type ColKey =
+  | "memoNumber" | "dispatch" | "truck" | "transport" | "destination"
+  | "rate" | "weight" | "netFreight" | "advance" | "balance"
+  | "unloading" | "lrRec" | "lrSub" | "finalPayable" | "finalPayDate"
+  | "remarks" | "status";
 
 function RegisterPage() {
   const { f } = Route.useSearch();
@@ -51,7 +56,7 @@ function RegisterPage() {
   const [scope, setScope] = useState<string>(f ?? "month");
   const [confirmDel, setConfirmDel] = useState<Memo | null>(null);
   const [confirmBulk, setConfirmBulk] = useState(false);
-  const [colFilters, setColFilters] = useState<Record<ColKey, Set<string> | null>>({
+  const [colFilters, setColFilters] = useState<Partial<Record<ColKey, Set<string> | null>>>({
     truck: null, transport: null, destination: null, status: null,
   });
 
@@ -63,11 +68,11 @@ function RegisterPage() {
     const now = new Date();
     if (scope === "today") rows = rows.filter((x) => new Date(x.dispatchDate).toDateString() === now.toDateString());
     else if (scope === "month") rows = rows.filter((x) => new Date(x.dispatchDate) >= startOfMonth(now));
-    else if (scope === "running") rows = rows.filter((x) => x.status === "Running" || x.status === "Dispatched");
+    else if (scope === "running") rows = rows.filter((x) => x.status === "Dispatched");
     else if (scope === "completed") rows = rows.filter((x) => x.status === "Completed");
-    else if (scope === "pending") rows = rows.filter((x) => x.status === "Dispatched" || x.status === "Running");
+    else if (scope === "pending") rows = rows.filter((x) => x.status === "Dispatched");
     else if (scope === "payment_pending") rows = rows.filter((x) => x.status === "Payment Pending");
-    else if (scope === "collection_due") rows = rows.filter((x) => x.status !== "Completed" && x.status !== "Cancelled" && x.balance > 0);
+    else if (scope === "collection_due") rows = rows.filter((x) => x.status !== "Completed" && x.balance > 0);
 
     if (status !== "all") rows = rows.filter((r) => r.status === status);
     if (truckId !== "all") rows = rows.filter((r) => r.truckId === truckId);
@@ -84,14 +89,38 @@ function RegisterPage() {
     return rows;
   }, [memos, trucks, consignees, query, status, truckId, consigneeId, scope]);
 
+  // Value extractor per column, used for both column-filter menus and filtering.
+  const colValue = (r: Memo, key: ColKey): string => {
+    switch (key) {
+      case "memoNumber": return r.memoNumber;
+      case "dispatch": return formatDate(r.dispatchDate);
+      case "truck": return truckById(r.truckId)?.truckNumber || "—";
+      case "transport": return r.transportName || "—";
+      case "destination": return r.toLocation || "—";
+      case "rate": return String(r.ratePerTon ?? "");
+      case "weight": return String(r.weightTons ?? "");
+      case "netFreight": return String(r.netFreight ?? "");
+      case "advance": return String(r.advance ?? "");
+      case "balance": return String(r.balance ?? "");
+      case "unloading": return formatDate(r.unloadingDate);
+      case "lrRec": return formatDate(r.lrReceivedDate);
+      case "lrSub": return formatDate(r.lrSubmittedDate);
+      case "finalPayable": return String(r.finalPayable ?? "");
+      case "finalPayDate": return formatDate(r.finalPaymentDate);
+      case "remarks": return r.remarks || "—";
+      case "status": return r.status;
+    }
+  };
+
   const filtered = useMemo(() => {
     let rows = rowsPre;
-    if (colFilters.truck) rows = rows.filter((r) => colFilters.truck!.has(truckById(r.truckId)?.truckNumber || "—"));
-    if (colFilters.transport) rows = rows.filter((r) => colFilters.transport!.has(r.transportName || "—"));
-    if (colFilters.destination) rows = rows.filter((r) => colFilters.destination!.has(r.toLocation || "—"));
-    if (colFilters.status) rows = rows.filter((r) => colFilters.status!.has(r.status));
+    (Object.keys(colFilters) as ColKey[]).forEach((k) => {
+      const sel = colFilters[k];
+      if (sel) rows = rows.filter((r) => sel.has(colValue(r, k)));
+    });
     return rows.sort((a, b) => +new Date(b.dispatchDate) - +new Date(a.dispatchDate));
-  }, [rowsPre, colFilters, trucks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowsPre, colFilters, trucks, consignees]);
 
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -99,7 +128,7 @@ function RegisterPage() {
 
   const resetFilters = () => {
     setQuery(""); setStatus("all"); setTruckId("all"); setConsigneeId("all"); setScope("all"); setPage(1);
-    setColFilters({ truck: null, transport: null, destination: null, status: null });
+    setColFilters({});
   };
 
   const toggleAll = () => {
@@ -255,108 +284,83 @@ function RegisterPage() {
           )}
         </div>
 
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[1600px] text-left">
-            <thead className="border-b bg-muted/40">
-              <tr className="text-xs uppercase tracking-wider text-muted-foreground">
-                <th className="w-8 px-3 py-3"><Checkbox checked={pageRows.length > 0 && selected.size === pageRows.length} onCheckedChange={toggleAll} /></th>
-                <th className="px-3 py-3">Memo #</th>
-                <th className="px-3 py-3">Dispatch</th>
-                <th className="px-3 py-3">
-                  <span className="inline-flex items-center">Truck
-                    <ColumnFilter
-                      values={rowsPre.map((r) => truckById(r.truckId)?.truckNumber || "—")}
-                      selected={colFilters.truck}
-                      onApply={(n) => setColFilters((f) => ({ ...f, truck: n }))}
-                    />
-                  </span>
-                </th>
-                <th className="px-3 py-3">
-                  <span className="inline-flex items-center">Transport
-                    <ColumnFilter
-                      values={rowsPre.map((r) => r.transportName || "—")}
-                      selected={colFilters.transport}
-                      onApply={(n) => setColFilters((f) => ({ ...f, transport: n }))}
-                    />
-                  </span>
-                </th>
-                <th className="px-3 py-3">
-                  <span className="inline-flex items-center">Destination
-                    <ColumnFilter
-                      values={rowsPre.map((r) => r.toLocation || "—")}
-                      selected={colFilters.destination}
-                      onApply={(n) => setColFilters((f) => ({ ...f, destination: n }))}
-                    />
-                  </span>
-                </th>
-                <th className="px-3 py-3 text-right">Rate/Ton</th>
-                <th className="px-3 py-3 text-right">Weight</th>
-                <th className="px-3 py-3 text-right">Net Freight</th>
-                <th className="px-3 py-3 text-right">Advance</th>
-                <th className="px-3 py-3 text-right">Balance</th>
-                <th className="px-3 py-3">Unloading</th>
-                <th className="px-3 py-3">LR Rec.</th>
-                <th className="px-3 py-3">LR Sub.</th>
-                <th className="px-3 py-3 text-right">Final Payable</th>
-                <th className="px-3 py-3">Final Pay Date</th>
-                <th className="px-3 py-3">
-                  <span className="inline-flex items-center">Status
-                    <ColumnFilter
-                      values={rowsPre.map((r) => r.status)}
-                      selected={colFilters.status}
-                      onApply={(n) => setColFilters((f) => ({ ...f, status: n }))}
-                    />
-                  </span>
-                </th>
-                <th className="px-3 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pageRows.length === 0 && (
-                <tr><td colSpan={18} className="py-16 text-center text-muted-foreground">
-                  <div>No records found</div>
-                  <Button variant="link" onClick={resetFilters}>Reset filters</Button>
-                </td></tr>
-              )}
-              {pageRows.map((r) => {
-                const tr = truckById(r.truckId);
-                return (
-                  <tr key={r.id} className="border-b hover:bg-muted/30">
-                    <td className="px-3 py-3"><Checkbox checked={selected.has(r.id)} onCheckedChange={(v) => {
-                      const next = new Set(selected); if (v) next.add(r.id); else next.delete(r.id); setSelected(next);
-                    }} /></td>
-                    <td className="px-3 py-3"><Link to="/memo/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.memoNumber}</Link></td>
-                    <td className="px-3 py-3 whitespace-nowrap">{formatDate(r.dispatchDate)}</td>
-                    <td className="px-3 py-3 font-semibold whitespace-nowrap">{tr?.truckNumber ?? "—"}</td>
-                    <td className="px-3 py-3">{r.transportName}</td>
-                    <td className="px-3 py-3 font-semibold">{r.toLocation}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(r.ratePerTon)}</td>
-                    <td className="px-3 py-3 text-right">{r.weightTons}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(r.netFreight)}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(r.advance)}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(r.balance)}</td>
-                    <td className="px-3 py-3 whitespace-nowrap">{formatDate(r.unloadingDate)}</td>
-                    <td className="px-3 py-3 whitespace-nowrap">{formatDate(r.lrReceivedDate)}</td>
-                    <td className="px-3 py-3 whitespace-nowrap">{formatDate(r.lrSubmittedDate)}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(r.finalPayable)}</td>
-                    <td className="px-3 py-3 whitespace-nowrap">{formatDate(r.finalPaymentDate)}</td>
-                    <td className="px-3 py-3"><StatusBadge status={r.status as MemoStatus} /></td>
-                    <td className="px-3 py-3">
-                      <div className="flex justify-end gap-1">
-                        <Link to="/memo/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button></Link>
-                        <Link to="/new-memo" search={{ edit: r.id } as never}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>
-                        <Link to="/memo/$id" params={{ id: r.id }} search={{ print: 1 } as never}><Button size="icon" variant="ghost"><Printer className="h-4 w-4" /></Button></Link>
-                        <Button size="icon" variant="ghost" onClick={() => setConfirmDel(r)}>
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </td>
+        {(() => {
+          // Column definitions — single source of truth for header, filter, and cell.
+          type Col = { key: ColKey; label: string; align?: "left" | "right"; render: (r: Memo) => React.ReactNode };
+          const cols: Col[] = [
+            { key: "memoNumber", label: "Memo #", render: (r) => <Link to="/memo/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.memoNumber}</Link> },
+            { key: "dispatch", label: "Dispatch", render: (r) => <span className="whitespace-nowrap">{formatDate(r.dispatchDate)}</span> },
+            { key: "truck", label: "Truck", render: (r) => <span className="font-semibold whitespace-nowrap">{truckById(r.truckId)?.truckNumber ?? "—"}</span> },
+            { key: "transport", label: "Transport", render: (r) => r.transportName },
+            { key: "destination", label: "Destination", render: (r) => <span className="font-semibold">{r.toLocation}</span> },
+            { key: "rate", label: "Rate/Ton", align: "right", render: (r) => formatMoney(r.ratePerTon) },
+            { key: "weight", label: "Weight", align: "right", render: (r) => r.weightTons },
+            { key: "netFreight", label: "Net Freight", align: "right", render: (r) => formatMoney(r.netFreight) },
+            { key: "advance", label: "Advance", align: "right", render: (r) => formatMoney(r.advance) },
+            { key: "balance", label: "Balance", align: "right", render: (r) => formatMoney(r.balance) },
+            { key: "unloading", label: "Unloading", render: (r) => <span className="whitespace-nowrap">{formatDate(r.unloadingDate)}</span> },
+            { key: "lrRec", label: "LR Rec.", render: (r) => <span className="whitespace-nowrap">{formatDate(r.lrReceivedDate)}</span> },
+            { key: "lrSub", label: "LR Sub.", render: (r) => <span className="whitespace-nowrap">{formatDate(r.lrSubmittedDate)}</span> },
+            { key: "remarks", label: "Remarks", render: (r) => <span className="text-sm text-muted-foreground">{r.remarks || "—"}</span> },
+            { key: "finalPayable", label: "Final Payable", align: "right", render: (r) => formatMoney(r.finalPayable) },
+            { key: "finalPayDate", label: "Final Pay Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.finalPaymentDate)}</span> },
+            { key: "status", label: "Status", render: (r) => <StatusBadge status={r.status as MemoStatus} /> },
+          ];
+          return (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[1700px] text-left">
+                <thead className="border-b bg-muted/40">
+                  <tr className="text-xs uppercase tracking-wider text-muted-foreground">
+                    <th className="w-8 px-3 py-3"><Checkbox checked={pageRows.length > 0 && selected.size === pageRows.length} onCheckedChange={toggleAll} /></th>
+                    {cols.map((c) => (
+                      <th key={c.key} className={`px-3 py-3 ${c.align === "right" ? "text-right" : ""}`}>
+                        <span className="inline-flex items-center">
+                          {c.label}
+                          <ColumnFilter
+                            values={rowsPre.map((r) => colValue(r, c.key))}
+                            selected={colFilters[c.key] ?? null}
+                            onApply={(n) => setColFilters((f) => ({ ...f, [c.key]: n }))}
+                          />
+                        </span>
+                      </th>
+                    ))}
+                    <th className="px-3 py-3 text-right">Actions</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody>
+                  {pageRows.length === 0 && (
+                    <tr><td colSpan={cols.length + 2} className="py-16 text-center text-muted-foreground">
+                      <div>No records found</div>
+                      <Button variant="link" onClick={resetFilters}>Reset filters</Button>
+                    </td></tr>
+                  )}
+                  {pageRows.map((r) => (
+                    <tr key={r.id} className="border-b hover:bg-muted/30">
+                      <td className="px-3 py-3">
+                        <Checkbox checked={selected.has(r.id)} onCheckedChange={(v) => {
+                          const next = new Set(selected); if (v) next.add(r.id); else next.delete(r.id); setSelected(next);
+                        }} />
+                      </td>
+                      {cols.map((c) => (
+                        <td key={c.key} className={`px-3 py-3 ${c.align === "right" ? "text-right" : ""}`}>{c.render(r)}</td>
+                      ))}
+                      <td className="px-3 py-3">
+                        <div className="flex justify-end gap-1">
+                          <Link to="/memo/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button></Link>
+                          <Link to="/new-memo" search={{ edit: r.id } as never}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>
+                          <Link to="/memo/$id" params={{ id: r.id }} search={{ print: 1 } as never}><Button size="icon" variant="ghost"><Printer className="h-4 w-4" /></Button></Link>
+                          <Button size="icon" variant="ghost" onClick={() => setConfirmDel(r)}>
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm text-muted-foreground">
@@ -387,7 +391,7 @@ function RegisterPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={async () => {
-              if (confirmDel) { await deleteMemo(confirmDel.id); toast.success("Moved to trash"); setConfirmDel(null); }
+              if (confirmDel) { const n = confirmDel.memoNumber; await deleteMemo(confirmDel.id); toast.success(`Memo ${n} moved to Trash`); setConfirmDel(null); }
             }}>Move to trash</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
