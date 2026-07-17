@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, Pencil, Printer, Trash2, Search, Download, MoreHorizontal } from "lucide-react";
+import { Eye, Pencil, Printer, Trash2, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
