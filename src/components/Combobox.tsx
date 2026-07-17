@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -18,27 +18,63 @@ export interface ComboboxOption {
   keywords?: string;
 }
 
+/**
+ * Searchable combobox with optional inline "create new" support.
+ *
+ * - `allowCustom`: when true, typing a value not in the list surfaces a
+ *   "Use X" entry that emits the raw typed string via onChange.
+ * - `onCreate`: when provided, typing a value not in the list surfaces
+ *   "+ Add X" that awaits the callback (which should persist the record
+ *   and return the new option's value/id) then calls onChange with it.
+ */
 export function Combobox({
   options,
   value,
   onChange,
+  onCreate,
   placeholder = "Select…",
   emptyText = "No results",
   className,
   allowCustom = false,
+  createLabel = "Add",
 }: {
   options: ComboboxOption[];
   value: string;
   onChange: (v: string) => void;
+  onCreate?: (typed: string) => Promise<string> | string;
   placeholder?: string;
   emptyText?: string;
   className?: string;
   allowCustom?: boolean;
+  createLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
   const current = options.find((o) => o.value === value);
   const display = current?.label ?? (allowCustom ? value : "");
+  const canCreate = !!onCreate || allowCustom;
+  const typedMatchesExisting = options.some(
+    (o) => o.label.trim().toLowerCase() === query.trim().toLowerCase(),
+  );
+
+  const handleCreate = async () => {
+    const q = query.trim();
+    if (!q) return;
+    setBusy(true);
+    try {
+      if (onCreate) {
+        const newVal = await onCreate(q);
+        onChange(newVal);
+      } else {
+        onChange(q);
+      }
+      setOpen(false);
+      setQuery("");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -62,20 +98,18 @@ export function Combobox({
             return hay.includes(search.toLowerCase()) ? 1 : 0;
           }}
         >
-          <CommandInput placeholder="Type to search…" value={query} onValueChange={setQuery} />
+          <CommandInput placeholder="Type to search or add new…" value={query} onValueChange={setQuery} />
           <CommandList>
             <CommandEmpty>
-              {allowCustom && query ? (
+              {canCreate && query.trim() ? (
                 <button
                   type="button"
-                  className="w-full px-2 py-1.5 text-left text-sm hover:bg-accent"
-                  onClick={() => {
-                    onChange(query);
-                    setOpen(false);
-                    setQuery("");
-                  }}
+                  disabled={busy}
+                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-accent disabled:opacity-50"
+                  onClick={handleCreate}
                 >
-                  Use "<span className="font-semibold">{query}</span>"
+                  <Plus className="h-4 w-4" />
+                  <span>{createLabel} "<span className="font-semibold">{query}</span>"</span>
                 </button>
               ) : (
                 <div className="py-4 text-center text-sm text-muted-foreground">{emptyText}</div>
@@ -96,6 +130,17 @@ export function Combobox({
                   {o.label}
                 </CommandItem>
               ))}
+              {canCreate && query.trim() && !typedMatchesExisting && (
+                <CommandItem
+                  value={`__create__${query}`}
+                  onSelect={handleCreate}
+                  disabled={busy}
+                  className="text-blue-600"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {createLabel} "{query}"
+                </CommandItem>
+              )}
             </CommandGroup>
           </CommandList>
         </Command>

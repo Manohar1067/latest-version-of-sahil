@@ -28,9 +28,6 @@ export interface FleetTruck {
   driverName: string;
   driverPhone: string;
   insuranceExpiry?: string;
-  fitnessExpiry?: string;
-  permitExpiry?: string;
-  status: TruckStatus;
   remarks?: string;
 }
 
@@ -47,23 +44,19 @@ export interface Consignee {
 
 export type MemoStatus =
   | "Dispatched"
-  | "Running"
   | "Delivered"
   | "Payment Pending"
   | "LR Received"
   | "LR Submitted"
-  | "Completed"
-  | "Cancelled";
+  | "Completed";
 
 export const ALL_MEMO_STATUSES: MemoStatus[] = [
   "Dispatched",
-  "Running",
   "Delivered",
   "Payment Pending",
   "LR Received",
   "LR Submitted",
   "Completed",
-  "Cancelled",
 ];
 
 export interface Memo {
@@ -195,6 +188,12 @@ function load() {
     if (raw) {
       db = { ...emptyDb(), ...(JSON.parse(raw) as DBShape) };
       db.settings = { ...DEFAULT_SETTINGS, ...db.settings };
+      // Migration: retire legacy statuses
+      db.memos.forEach((m) => {
+        const s = m.status as string;
+        if (s === "Running") m.status = "Dispatched";
+        else if (s === "Cancelled") m.status = "Payment Pending";
+      });
       return;
     }
   } catch {
@@ -267,9 +266,6 @@ function seed() {
       driverName: "Ramesh Kumar",
       driverPhone: "+91 90000 22222",
       insuranceExpiry: "2026-11-20",
-      fitnessExpiry: "2027-03-15",
-      permitExpiry: "2027-01-10",
-      status: "Running",
     },
     {
       id: uid(),
@@ -279,9 +275,6 @@ function seed() {
       driverName: "Suresh Reddy",
       driverPhone: "+91 90000 44444",
       insuranceExpiry: "2026-08-01",
-      fitnessExpiry: "2027-02-01",
-      permitExpiry: "2026-12-05",
-      status: "Available",
     },
     {
       id: uid(),
@@ -291,9 +284,6 @@ function seed() {
       driverName: "Mohan Rao",
       driverPhone: "+91 90000 55555",
       insuranceExpiry: "2026-09-30",
-      fitnessExpiry: "2027-04-20",
-      permitExpiry: "2027-06-10",
-      status: "Available",
     },
     {
       id: uid(),
@@ -303,9 +293,6 @@ function seed() {
       driverName: "Anwar Ali",
       driverPhone: "+91 90000 77777",
       insuranceExpiry: "2026-10-10",
-      fitnessExpiry: "2027-05-01",
-      permitExpiry: "2027-02-15",
-      status: "Maintenance",
     },
   ];
   db.trucks = trucks;
@@ -377,15 +364,15 @@ function seed() {
   ];
   const statuses: MemoStatus[] = [
     "Completed",
-    "Running",
+    "Dispatched",
     "Payment Pending",
-    "Cancelled",
     "Delivered",
     "LR Received",
     "LR Submitted",
     "Dispatched",
     "Completed",
-    "Running",
+    "Payment Pending",
+    "Delivered",
   ];
   const dayOffsets = [0, 2, 5, 9, 14, 20, 27, 35, 45, 55];
 
@@ -423,7 +410,7 @@ function seed() {
       ratePerTon: rate,
       netFreight,
       unloadingDate:
-        status !== "Dispatched" && status !== "Cancelled"
+        status !== "Dispatched"
           ? daysAgo(Math.max(0, dayOffsets[i] - 2))
           : undefined,
       lrReceivedDate:
@@ -702,4 +689,51 @@ export function _resetStore() {
   db = emptyDb();
   seed();
   persist();
+}
+
+// -------------------------- BACKUP / RESTORE --------------------------------
+
+export async function exportAllData(): Promise<string> {
+  return JSON.stringify(
+    {
+      version: 1,
+      exportedAt: nowIso(),
+      trucks: db.trucks,
+      consignees: db.consignees,
+      memos: db.memos,
+      history: db.history,
+      audit: db.audit,
+      settings: db.settings,
+      memoCounters: db.memoCounters,
+    },
+    null,
+    2,
+  );
+}
+
+export async function importAllData(json: string): Promise<{
+  trucks: number; consignees: number; memos: number;
+}> {
+  const parsed = JSON.parse(json) as Partial<DBShape>;
+  const next: DBShape = {
+    trucks: parsed.trucks ?? [],
+    consignees: parsed.consignees ?? [],
+    memos: parsed.memos ?? [],
+    history: parsed.history ?? [],
+    audit: parsed.audit ?? [],
+    settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
+    memoCounters: parsed.memoCounters ?? {},
+  };
+  db = next;
+  // Migration for imported data
+  db.memos.forEach((m) => {
+    const s = m.status as string;
+    if (s === "Running") m.status = "Dispatched";
+    else if (s === "Cancelled") m.status = "Payment Pending";
+  });
+  audit("Imported data", "Settings", "backup", null, {
+    trucks: db.trucks.length, consignees: db.consignees.length, memos: db.memos.length,
+  });
+  persist();
+  return { trucks: db.trucks.length, consignees: db.consignees.length, memos: db.memos.length };
 }

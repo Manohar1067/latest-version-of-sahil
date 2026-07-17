@@ -11,7 +11,7 @@ import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, Pencil, Printer, Trash2, Search, Download } from "lucide-react";
+import { Eye, Pencil, Printer, Trash2, Search, Download, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -32,7 +32,12 @@ export const Route = createFileRoute("/register")({
 
 function startOfMonth(d = new Date()) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 
-type ColKey = "truck" | "transport" | "destination" | "status";
+// Register list supports per-column excel-style filters; each key names a column.
+type ColKey =
+  | "memoNumber" | "dispatch" | "truck" | "transport" | "destination"
+  | "rate" | "weight" | "netFreight" | "advance" | "balance"
+  | "unloading" | "lrRec" | "lrSub" | "finalPayable" | "finalPayDate"
+  | "remarks" | "status";
 
 function RegisterPage() {
   const { f } = Route.useSearch();
@@ -51,7 +56,7 @@ function RegisterPage() {
   const [scope, setScope] = useState<string>(f ?? "month");
   const [confirmDel, setConfirmDel] = useState<Memo | null>(null);
   const [confirmBulk, setConfirmBulk] = useState(false);
-  const [colFilters, setColFilters] = useState<Record<ColKey, Set<string> | null>>({
+  const [colFilters, setColFilters] = useState<Partial<Record<ColKey, Set<string> | null>>>({
     truck: null, transport: null, destination: null, status: null,
   });
 
@@ -63,11 +68,11 @@ function RegisterPage() {
     const now = new Date();
     if (scope === "today") rows = rows.filter((x) => new Date(x.dispatchDate).toDateString() === now.toDateString());
     else if (scope === "month") rows = rows.filter((x) => new Date(x.dispatchDate) >= startOfMonth(now));
-    else if (scope === "running") rows = rows.filter((x) => x.status === "Running" || x.status === "Dispatched");
+    else if (scope === "running") rows = rows.filter((x) => x.status === "Dispatched");
     else if (scope === "completed") rows = rows.filter((x) => x.status === "Completed");
-    else if (scope === "pending") rows = rows.filter((x) => x.status === "Dispatched" || x.status === "Running");
+    else if (scope === "pending") rows = rows.filter((x) => x.status === "Dispatched");
     else if (scope === "payment_pending") rows = rows.filter((x) => x.status === "Payment Pending");
-    else if (scope === "collection_due") rows = rows.filter((x) => x.status !== "Completed" && x.status !== "Cancelled" && x.balance > 0);
+    else if (scope === "collection_due") rows = rows.filter((x) => x.status !== "Completed" && x.balance > 0);
 
     if (status !== "all") rows = rows.filter((r) => r.status === status);
     if (truckId !== "all") rows = rows.filter((r) => r.truckId === truckId);
@@ -84,14 +89,38 @@ function RegisterPage() {
     return rows;
   }, [memos, trucks, consignees, query, status, truckId, consigneeId, scope]);
 
+  // Value extractor per column, used for both column-filter menus and filtering.
+  const colValue = (r: Memo, key: ColKey): string => {
+    switch (key) {
+      case "memoNumber": return r.memoNumber;
+      case "dispatch": return formatDate(r.dispatchDate);
+      case "truck": return truckById(r.truckId)?.truckNumber || "—";
+      case "transport": return r.transportName || "—";
+      case "destination": return r.toLocation || "—";
+      case "rate": return String(r.ratePerTon ?? "");
+      case "weight": return String(r.weightTons ?? "");
+      case "netFreight": return String(r.netFreight ?? "");
+      case "advance": return String(r.advance ?? "");
+      case "balance": return String(r.balance ?? "");
+      case "unloading": return formatDate(r.unloadingDate);
+      case "lrRec": return formatDate(r.lrReceivedDate);
+      case "lrSub": return formatDate(r.lrSubmittedDate);
+      case "finalPayable": return String(r.finalPayable ?? "");
+      case "finalPayDate": return formatDate(r.finalPaymentDate);
+      case "remarks": return r.remarks || "—";
+      case "status": return r.status;
+    }
+  };
+
   const filtered = useMemo(() => {
     let rows = rowsPre;
-    if (colFilters.truck) rows = rows.filter((r) => colFilters.truck!.has(truckById(r.truckId)?.truckNumber || "—"));
-    if (colFilters.transport) rows = rows.filter((r) => colFilters.transport!.has(r.transportName || "—"));
-    if (colFilters.destination) rows = rows.filter((r) => colFilters.destination!.has(r.toLocation || "—"));
-    if (colFilters.status) rows = rows.filter((r) => colFilters.status!.has(r.status));
+    (Object.keys(colFilters) as ColKey[]).forEach((k) => {
+      const sel = colFilters[k];
+      if (sel) rows = rows.filter((r) => sel.has(colValue(r, k)));
+    });
     return rows.sort((a, b) => +new Date(b.dispatchDate) - +new Date(a.dispatchDate));
-  }, [rowsPre, colFilters, trucks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowsPre, colFilters, trucks, consignees]);
 
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -99,7 +128,7 @@ function RegisterPage() {
 
   const resetFilters = () => {
     setQuery(""); setStatus("all"); setTruckId("all"); setConsigneeId("all"); setScope("all"); setPage(1);
-    setColFilters({ truck: null, transport: null, destination: null, status: null });
+    setColFilters({});
   };
 
   const toggleAll = () => {

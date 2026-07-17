@@ -66,12 +66,12 @@ function Dashboard() {
   const todayExpenses = today.reduce((s, x) => s + (x.totalExpenses || 0), 0);
   const todayProfit = todayRevenue - todayExpenses;
   const monthlyRevenue = monthly.reduce((s, x) => s + (x.netFreight || 0), 0);
-  const running = m.filter((x) => x.status === "Running" || x.status === "Dispatched").length;
+  const running = m.filter((x) => x.status === "Dispatched").length;
   const completed = m.filter((x) => x.status === "Completed").length;
-  const pendingDeliveries = m.filter((x) => ["Dispatched", "Running"].includes(x.status)).length;
+  const pendingDeliveries = m.filter((x) => x.status === "Dispatched").length;
   const pendingPayment = m.filter((x) => x.status === "Payment Pending");
   const pendingPaymentAmount = pendingPayment.reduce((s, x) => s + (x.balance || 0), 0);
-  const collectionDue = m.filter((x) => x.status !== "Completed" && x.status !== "Cancelled").reduce((s, x) => s + (x.balance || 0), 0);
+  const collectionDue = m.filter((x) => x.status !== "Completed").reduce((s, x) => s + (x.balance || 0), 0);
 
   const truckCounts: Record<string, number> = {};
   const truckAmt: Record<string, number> = {};
