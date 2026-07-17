@@ -391,7 +391,7 @@ function RegisterPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={async () => {
-              if (confirmDel) { await deleteMemo(confirmDel.id); toast.success("Moved to trash"); setConfirmDel(null); }
+              if (confirmDel) { const n = confirmDel.memoNumber; await deleteMemo(confirmDel.id); toast.success(`Memo ${n} moved to Trash`); setConfirmDel(null); }
             }}>Move to trash</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
