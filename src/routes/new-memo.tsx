@@ -199,7 +199,7 @@ function NewMemo() {
                 toast.success(`Consignee "${c.companyName}" added`);
                 return c.id;
               }}
-              createLabel="+ Add consignee"
+              createLabel="Use"
               placeholder="Search or add consignee…"
             />
           </Field>
@@ -216,7 +216,7 @@ function NewMemo() {
                 toast.success(`Truck ${t.truckNumber} added`);
                 return t.id;
               }}
-              createLabel="+ Add truck"
+              createLabel="Use"
               placeholder="Search or add truck…"
             />
           </Field>

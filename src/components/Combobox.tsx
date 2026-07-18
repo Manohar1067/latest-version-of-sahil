@@ -24,7 +24,7 @@ export interface ComboboxOption {
  * - `allowCustom`: when true, typing a value not in the list surfaces a
  *   "Use X" entry that emits the raw typed string via onChange.
  * - `onCreate`: when provided, typing a value not in the list surfaces
- *   "+ Add X" that awaits the callback (which should persist the record
+ *   "Use X" that awaits the callback (which should persist the record
  *   and return the new option's value/id) then calls onChange with it.
  */
 export function Combobox({
@@ -36,7 +36,7 @@ export function Combobox({
   emptyText = "No results",
   className,
   allowCustom = false,
-  createLabel = "Add",
+  createLabel = "Use",
 }: {
   options: ComboboxOption[];
   value: string;
@@ -109,7 +109,7 @@ export function Combobox({
                   onClick={handleCreate}
                 >
                   <Plus className="h-4 w-4" />
-                  <span>{createLabel} "<span className="font-semibold">{query}</span>"</span>
+                  <span>Use "<span className="font-semibold">{query}</span>"</span>
                 </button>
               ) : (
                 <div className="py-4 text-center text-sm text-muted-foreground">{emptyText}</div>
@@ -138,7 +138,7 @@ export function Combobox({
                   className="text-blue-600"
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  {createLabel} "{query}"
+                  Use "{query}"
                 </CommandItem>
               )}
             </CommandGroup>
