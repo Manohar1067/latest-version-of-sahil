@@ -14,7 +14,8 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { supabase } from "./supabaseClient";
 import type { Session } from "@supabase/supabase-js";
 
-const ADMIN_EMAIL = "sahil111tms@gmail.com";
+const ADMIN_EMAIL = "adminsahil@gmail.com";
+
 
 interface AuthContextValue {
   session: Session | null;
