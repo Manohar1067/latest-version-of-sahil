@@ -54,7 +54,8 @@ function rangeEnd(r: Range): Date {
 function ReportsPage() {
   const { data: memos } = useStoreData<Memo[]>(() => getMemos(), []);
   const { data: trucks } = useStoreData<FleetTruck[]>(() => getTrucks(), []);
-  const [range, setRange] = useState<Range>("month");
+  const { period } = Route.useSearch();
+  const [range, setRange] = useState<Range>((period === "today" || period === "month" || period === "year" || period === "week") ? period as Range : "month");
   const [type, setType] = useState<string>("summary");
   const chartsRef = useRef<HTMLDivElement>(null);
 
