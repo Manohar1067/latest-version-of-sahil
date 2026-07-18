@@ -177,12 +177,22 @@ export function AppShell({
               )}
             </PopoverContent>
           </Popover>
-          <div className="ml-2 flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-sm font-semibold text-white">
-              AD
-            </div>
-            <span className="text-sm font-medium text-foreground">Admin</span>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="ml-2 flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted" aria-label="Account menu">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-sm font-semibold text-white">AD</div>
+                <span className="text-sm font-medium text-foreground">Admin</span>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">Signed in as Admin</div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-700">
+                <LogOut className="mr-2 h-4 w-4" />Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
 
         <main className="flex-1 px-8 py-6">
