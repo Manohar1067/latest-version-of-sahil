@@ -12,6 +12,7 @@ import {
   Moon,
   Sun,
   Bell,
+  Users,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { getSettings, updateSettings, getMemos, type Settings, type Memo } from "@/lib/dataStore";
@@ -35,6 +36,7 @@ const nav = [
   { to: "/audit", label: "Audit Log", icon: ScrollText },
   { to: "/trash", label: "Trash", icon: Trash2 },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
+  { to: "/user-management", label: "User Management", icon: Users },
 ];
 
 export function AppShell({

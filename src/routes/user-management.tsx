@@ -1,0 +1,248 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { AppShell } from "@/components/layout/AppShell";
+import { useAuth } from "@/lib/AuthContext";
+import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { toast } from "sonner";
+import type { UserRole } from "@/lib/AuthContext";
+
+export const Route = createFileRoute("/user-management")({
+  component: UserManagement,
+});
+
+interface UserRow {
+  id: string;
+  auth_user_id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: UserRole;
+  active: boolean;
+}
+
+function UserManagement() {
+  const { profile } = useAuth();
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "Office Staff" as UserRole, pin: "" });
+  const [saving, setSaving] = useState(false);
+
+  async function loadUsers() {
+    setLoading(true);
+    const { data, error } = await supabase.from("profiles").select("*").order("name");
+    if (!error) setUsers(data as UserRow[]);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  if (profile && profile.role !== "Super Admin") {
+    return (
+      <AppShell title="User Management" breadcrumb="Home / User Management">
+        <div className="card-surface p-6 text-center text-muted-foreground">
+          Only Super Admins can access User Management.
+        </div>
+      </AppShell>
+    );
+  }
+
+  const filtered = users.filter((u) => {
+    const matchesSearch =
+      u.name.toLowerCase().includes(search.toLowerCase()) ||
+      u.email.toLowerCase().includes(search.toLowerCase());
+    const matchesRole = roleFilter === "all" || u.role === roleFilter;
+    const matchesStatus =
+      statusFilter === "all" || (statusFilter === "active" ? u.active : !u.active);
+    return matchesSearch && matchesRole && matchesStatus;
+  });
+
+  async function handleAddUser() {
+    if (!form.name || !form.email || !/^\d{6}$/.test(form.pin)) {
+      toast.error("Name, email, and a 6-digit PIN are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      const { data, error } = await supabase.functions.invoke("create-user", {
+        body: form,
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (error || data?.error) {
+        toast.error(data?.error ?? error?.message ?? "Failed to create user");
+        return;
+      }
+      toast.success(`User "${form.name}" created`);
+      setOpen(false);
+      setForm({ name: "", email: "", phone: "", role: "Office Staff", pin: "" });
+      loadUsers();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleActive(u: UserRow) {
+    const { error } = await supabase.from("profiles").update({ active: !u.active }).eq("id", u.id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(u.active ? `${u.name} disabled` : `${u.name} enabled`);
+    loadUsers();
+  }
+
+  async function changeRole(u: UserRow, role: UserRole) {
+    const { error } = await supabase.from("profiles").update({ role }).eq("id", u.id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    toast.success(`${u.name}'s role changed to ${role}`);
+    loadUsers();
+  }
+
+  return (
+    <AppShell
+      title="User Management"
+      breadcrumb="Home / Settings / User Management"
+      actions={
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button>+ Add User</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add User</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div>
+                <Label>Name</Label>
+                <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <Label>Internal Email</Label>
+                <Input
+                  value={form.email}
+                  onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                  placeholder="name@sahilroadlines.local"
+                />
+              </div>
+              <div>
+                <Label>Phone</Label>
+                <Input value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+              </div>
+              <div>
+                <Label>Role</Label>
+                <Select value={form.role} onValueChange={(v) => setForm((f) => ({ ...f, role: v as UserRole }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Super Admin">Super Admin</SelectItem>
+                    <SelectItem value="Admin">Admin</SelectItem>
+                    <SelectItem value="Office Staff">Office Staff</SelectItem>
+                    <SelectItem value="Viewer">Viewer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>6-digit PIN</Label>
+                <Input
+                  value={form.pin}
+                  onChange={(e) => setForm((f) => ({ ...f, pin: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
+                  maxLength={6}
+                />
+              </div>
+              <Button className="w-full" onClick={handleAddUser} disabled={saving}>
+                {saving ? "Creating..." : "Create User"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      }
+    >
+      <div className="card-surface p-6 space-y-4">
+        <div className="flex flex-wrap gap-3">
+          <Input placeholder="Search users..." value={search} onChange={(e) => setSearch(e.target.value)} className="max-w-xs" />
+          <Select value={roleFilter} onValueChange={setRoleFilter}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="All roles" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All roles</SelectItem>
+              <SelectItem value="Super Admin">Super Admin</SelectItem>
+              <SelectItem value="Admin">Admin</SelectItem>
+              <SelectItem value="Office Staff">Office Staff</SelectItem>
+              <SelectItem value="Viewer">Viewer</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="All statuses" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {loading ? (
+          <div className="text-center text-muted-foreground py-8">Loading...</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center text-muted-foreground py-8">No users found</div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                <th className="py-2">Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((u) => (
+                <tr key={u.id} className="border-b">
+                  <td className="py-3 font-medium">{u.name}</td>
+                  <td className="text-muted-foreground">{u.email}</td>
+                  <td className="text-muted-foreground">{u.phone ?? "—"}</td>
+                  <td>
+                    <Select value={u.role} onValueChange={(v) => changeRole(u, v as UserRole)}>
+                      <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Super Admin">Super Admin</SelectItem>
+                        <SelectItem value="Admin">Admin</SelectItem>
+                        <SelectItem value="Office Staff">Office Staff</SelectItem>
+                        <SelectItem value="Viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td>
+                    <span className={u.active ? "text-green-600" : "text-red-600"}>
+                      {u.active ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td>
+                    <Button variant="outline" size="sm" onClick={() => toggleActive(u)}>
+                      {u.active ? "Disable" : "Enable"}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </AppShell>
+  );
+}

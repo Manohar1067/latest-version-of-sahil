@@ -1,91 +1,127 @@
 /**
- * AuthContext — PIN-based login backed by Supabase Auth.
+ * AuthContext — scalable login backed by Supabase Auth + a `profiles` table.
  *
- * Supports TWO admin PINs. Each admin has their own internal identifier
- * behind the scenes — these are NOT real email addresses and nothing is ever
- * sent to them. They exist only because Supabase Auth's password system
- * requires an "email" field as the account identifier.
+ * No accounts are hardcoded here. The person logs in with their internal
+ * email + PIN; Supabase Auth verifies the credential, then this context
+ * loads their profile row (name, role, active status) from the database.
  *
- * ⚠️ IMPORTANT: the two emails below MUST exactly match, character-for-
- * character, the two users you create in Supabase Authentication -> Users.
- * If they don't match exactly, every login attempt will fail with
- * "Incorrect PIN" even when the PIN itself is correct.
+ * Adding a user is done entirely through the User Management page — no
+ * code changes are ever required.
  *
- * Temporary console logging is included below so you can see the REAL
- * reason a login failed (open browser DevTools -> Console). Remove the
- * console.log lines once everything is confirmed working.
+ * TEMPORARY: console.log lines below are for debugging the login-bounce
+ * issue — remove them once login is confirmed working end-to-end.
  */
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { supabase } from "./supabaseClient";
 import type { Session } from "@supabase/supabase-js";
 
-interface AdminAccount {
-  name: string;
-  email: string; // internal identifier only — never a real email, never contacted
-}
+export type UserRole = "Super Admin" | "Admin" | "Office Staff" | "Viewer";
 
-// ⚠️ These two emails must exactly match what you create in Supabase.
-const ADMIN_ACCOUNTS: AdminAccount[] = [
-  { name: "Admin 1", email: "adminshail@gmail.com" },
-  { name: "Admin 2", email: "sahil111tms@gmail.com" },
-];
+export interface Profile {
+  id: string;
+  authUserId: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: UserRole;
+  active: boolean;
+}
 
 interface AuthContextValue {
   session: Session | null;
+  profile: Profile | null;
   loading: boolean;
-  displayName: string;
-  loginWithPin: (pin: string) => Promise<{ error: string | null }>;
+  login: (email: string, pin: string) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function rowToProfile(r: any): Profile {
+  return {
+    id: r.id,
+    authUserId: r.auth_user_id,
+    name: r.name,
+    email: r.email,
+    phone: r.phone,
+    role: r.role,
+    active: r.active,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  async function loadProfile(userId: string) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("auth_user_id", userId)
+      .maybeSingle();
+    console.log("loadProfile query — userId:", userId, "data:", data, "error:", error);
+    if (error || !data) {
+      setProfile(null);
+      return null;
+    }
+    const p = rowToProfile(data);
+    setProfile(p);
+    return p;
+  }
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session);
+      if (data.session?.user?.id) {
+        await loadProfile(data.session.user.id);
+      }
       setLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession);
+      if (newSession?.user?.id) {
+        await loadProfile(newSession.user.id);
+      } else {
+        setProfile(null);
+      }
     });
 
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  const displayName =
-    ADMIN_ACCOUNTS.find((a) => a.email === session?.user?.email)?.name ?? "Admin";
-
-  async function loginWithPin(pin: string): Promise<{ error: string | null }> {
+  async function login(email: string, pin: string): Promise<{ error: string | null }> {
     if (!/^\d{6}$/.test(pin)) {
       return { error: "PIN must be exactly 6 digits." };
     }
-    for (const account of ADMIN_ACCOUNTS) {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: account.email,
-        password: pin,
-      });
-      if (!error) {
-        console.log(`✅ Login succeeded for ${account.email}`);
-        return { error: null };
-      }
-      // TEMPORARY — remove once login is confirmed working.
-      console.log(`❌ Login attempt failed for ${account.email}:`, error.message);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pin });
+    if (error || !data.user) {
+      return { error: "Incorrect email or PIN." };
     }
-    return { error: "Incorrect PIN. Please try again." };
+
+    console.log("Auth succeeded, user id:", data.user.id, "email:", data.user.email);
+    const p = await loadProfile(data.user.id);
+    console.log("Profile lookup result:", p);
+    if (!p) {
+      await supabase.auth.signOut();
+      return { error: "No profile found for this account. Contact a Super Admin." };
+    }
+    if (!p.active) {
+      await supabase.auth.signOut();
+      return { error: "This account has been disabled. Contact a Super Admin." };
+    }
+    return { error: null };
   }
 
   async function logout() {
     await supabase.auth.signOut();
+    setProfile(null);
   }
 
   return (
-    <AuthContext.Provider value={{ session, loading, displayName, loginWithPin, logout }}>
+    <AuthContext.Provider value={{ session, profile, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

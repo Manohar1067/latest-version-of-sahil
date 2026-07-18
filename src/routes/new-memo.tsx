@@ -265,7 +265,10 @@ function NewMemo() {
                 <SelectItem value="PhonePe">PhonePe</SelectItem>
                 <SelectItem value="GPay">GPay</SelectItem>
                 <SelectItem value="Paytm">Paytm</SelectItem>
-                <SelectItem value="Bank Transfer">Bank Transfer</SelectItem>
+                <SelectItem value="Axis Bank – Current">Axis Bank – Current</SelectItem>
+                <SelectItem value="Axis Bank – Savings">Axis Bank – Savings</SelectItem>
+                <SelectItem value="HDFC Bank – Current">HDFC Bank – Current</SelectItem>
+                <SelectItem value="HDFC Bank – Savings">HDFC Bank – Savings</SelectItem>
               </SelectContent>
             </Select>
           </Field>

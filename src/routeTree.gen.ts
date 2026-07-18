@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UserManagementRouteImport } from './routes/user-management'
 import { Route as TrashRouteImport } from './routes/trash'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ReportsRouteImport } from './routes/reports'
@@ -20,6 +21,11 @@ import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MemoIdRouteImport } from './routes/memo.$id'
 
+const UserManagementRoute = UserManagementRouteImport.update({
+  id: '/user-management',
+  path: '/user-management',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TrashRoute = TrashRouteImport.update({
   id: '/trash',
   path: '/trash',
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/trash': typeof TrashRoute
+  '/user-management': typeof UserManagementRoute
   '/memo/$id': typeof MemoIdRoute
 }
 export interface FileRoutesByTo {
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/trash': typeof TrashRoute
+  '/user-management': typeof UserManagementRoute
   '/memo/$id': typeof MemoIdRoute
 }
 export interface FileRoutesById {
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/trash': typeof TrashRoute
+  '/user-management': typeof UserManagementRoute
   '/memo/$id': typeof MemoIdRoute
 }
 export interface FileRouteTypes {
@@ -120,6 +129,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/trash'
+    | '/user-management'
     | '/memo/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/trash'
+    | '/user-management'
     | '/memo/$id'
   id:
     | '__root__'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/settings'
     | '/trash'
+    | '/user-management'
     | '/memo/$id'
   fileRoutesById: FileRoutesById
 }
@@ -157,11 +169,19 @@ export interface RootRouteChildren {
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
   TrashRoute: typeof TrashRoute
+  UserManagementRoute: typeof UserManagementRoute
   MemoIdRoute: typeof MemoIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/user-management': {
+      id: '/user-management'
+      path: '/user-management'
+      fullPath: '/user-management'
+      preLoaderRoute: typeof UserManagementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/trash': {
       id: '/trash'
       path: '/trash'
@@ -245,6 +265,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
   TrashRoute: TrashRoute,
+  UserManagementRoute: UserManagementRoute,
   MemoIdRoute: MemoIdRoute,
 }
 export const routeTree = rootRouteImport

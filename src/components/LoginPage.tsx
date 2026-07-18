@@ -1,14 +1,9 @@
-/**
- * PIN Login screen — matches the app's existing visual design
- * (navy sidebar color as accent, white card, large readable inputs).
- * Drop this in as your app's entry point when there's no active session.
- */
-
 import { useState } from "react";
 import { useAuth } from "@/lib/AuthContext";
 
 export default function LoginPage() {
-  const { loginWithPin } = useAuth();
+  const { login } = useAuth();
+  const [email, setEmail] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -17,7 +12,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
-    const { error } = await loginWithPin(pin);
+    const { error } = await login(email.trim(), pin);
     setSubmitting(false);
     if (error) {
       setError(error);
@@ -39,25 +34,34 @@ export default function LoginPage() {
           <p className="text-xs text-gray-500 tracking-widest">TRANSPORT ERP</p>
         </div>
 
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Enter your PIN
-        </label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+        <input
+          type="text"
+          autoFocus
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full border border-gray-300 rounded-md py-3 px-3 mb-4 focus:outline-none focus:ring-2 focus:ring-[#0B2A55]"
+          placeholder="you@sahilroadlines.local"
+          autoComplete="username"
+        />
+
+        <label className="block text-sm font-medium text-gray-700 mb-2">Enter your PIN</label>
         <input
           type="password"
           inputMode="numeric"
           maxLength={6}
-          autoFocus
           value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
           className="w-full text-center tracking-[0.5em] text-2xl border border-gray-300 rounded-md py-3 mb-4 focus:outline-none focus:ring-2 focus:ring-[#0B2A55]"
           placeholder="••••••"
+          autoComplete="current-password"
         />
 
         {error && <p className="text-red-600 text-sm mb-4 text-center">{error}</p>}
 
         <button
           type="submit"
-          disabled={submitting || pin.length !== 6}
+          disabled={submitting || pin.length !== 6 || !email.trim()}
           className="w-full bg-[#0B2A55] text-white rounded-md py-3 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? "Checking..." : "Login"}
