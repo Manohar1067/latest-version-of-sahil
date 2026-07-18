@@ -50,6 +50,11 @@ export function AppShell({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const handleLogout = async () => {
+    try { await logout(); toast.success("Logged out"); }
+    catch { toast.error("Logout failed"); }
+  };
   const { data: settings } = useStoreData<Settings>(() => getSettings(), []);
   const { data: memos } = useStoreData<Memo[]>(() => getMemos(), []);
   const [dark, setDark] = useState(false);
