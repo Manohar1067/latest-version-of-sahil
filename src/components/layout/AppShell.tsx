@@ -17,6 +17,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { getSettings, updateSettings, getMemos, type Settings, type Memo } from "@/lib/dataStore";
 import { useStoreData } from "@/lib/useStore";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { LogOut, ChevronDown } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
+import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
 
 const nav = [
