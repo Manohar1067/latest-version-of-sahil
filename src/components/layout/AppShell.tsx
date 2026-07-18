@@ -17,6 +17,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { getSettings, updateSettings, getMemos, type Settings, type Memo } from "@/lib/dataStore";
 import { useStoreData } from "@/lib/useStore";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { LogOut, ChevronDown } from "lucide-react";
+import { useAuth } from "@/lib/AuthContext";
+import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
 
 const nav = [
@@ -44,6 +50,11 @@ export function AppShell({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
+  const { logout } = useAuth();
+  const handleLogout = async () => {
+    try { await logout(); toast.success("Logged out"); }
+    catch { toast.error("Logout failed"); }
+  };
   const { data: settings } = useStoreData<Settings>(() => getSettings(), []);
   const { data: memos } = useStoreData<Memo[]>(() => getMemos(), []);
   const [dark, setDark] = useState(false);
@@ -113,7 +124,7 @@ export function AppShell({
             );
           })}
         </nav>
-        <div className="px-5 py-4 text-[11px] text-white/50">v1.0 · Local Data</div>
+        <div className="px-5 py-4 text-[11px] text-white/50">v1.0 · Live</div>
       </aside>
 
       {/* Content */}
@@ -166,12 +177,22 @@ export function AppShell({
               )}
             </PopoverContent>
           </Popover>
-          <div className="ml-2 flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-sm font-semibold text-white">
-              AD
-            </div>
-            <span className="text-sm font-medium text-foreground">Admin</span>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="ml-2 flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted" aria-label="Account menu">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-sm font-semibold text-white">AD</div>
+                <span className="text-sm font-medium text-foreground">Admin</span>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">Signed in as Admin</div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-700">
+                <LogOut className="mr-2 h-4 w-4" />Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
 
         <main className="flex-1 px-8 py-6">
