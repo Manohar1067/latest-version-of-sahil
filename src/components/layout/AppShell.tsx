@@ -124,7 +124,7 @@ export function AppShell({
             );
           })}
         </nav>
-        <div className="px-5 py-4 text-[11px] text-white/50">v1.0 · Local Data</div>
+        <div className="px-5 py-4 text-[11px] text-white/50">v1.0 · Live</div>
       </aside>
 
       {/* Content */}
