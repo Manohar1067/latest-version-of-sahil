@@ -34,6 +34,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, pin: string) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
+  changeOwnPin: (newPin: string) => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -120,8 +121,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null);
   }
 
+  async function changeOwnPin(newPin: string): Promise<{ error: string | null }> {
+    if (!/^\d{6}$/.test(newPin)) {
+      return { error: "PIN must be exactly 6 digits." };
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPin });
+    if (error) return { error: error.message };
+    return { error: null };
+  }
+
   return (
-    <AuthContext.Provider value={{ session, profile, loading, login, logout }}>
+    <AuthContext.Provider value={{ session, profile, loading, login, logout, changeOwnPin }}>
       {children}
     </AuthContext.Provider>
   );

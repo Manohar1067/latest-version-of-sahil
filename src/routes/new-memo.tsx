@@ -3,7 +3,6 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import {
   getTrucks, getConsignees, createMemo, updateMemo, getMemo, peekNextMemoNumber,
-  createTruck, createConsignee,
   ALL_MEMO_STATUSES,
   type FleetTruck, type Consignee, type MemoStatus, type MemoInput,
 } from "@/lib/dataStore";
@@ -51,6 +50,8 @@ const emptyForm = (): MemoInput => ({
   transportName: "",
   consigneeId: "",
   truckId: "",
+  truckNumber: "",
+  consigneeName: "",
   driverName: "",
   ownerName: "",
   ownerPhone: "",
@@ -123,20 +124,12 @@ function NewMemo() {
     setDirty(true);
   };
 
-  // Auto-fill from truck
-  const onTruck = (id: string) => {
-    const t = trucks?.find((x) => x.id === id);
-    if (t) setForm((f) => ({ ...f, truckId: id, driverName: t.driverName, ownerName: t.ownerName, ownerPhone: t.ownerPhone }));
-    else set("truckId", id);
-    setDirty(true);
-  };
-
   const paidByOptions = useMemo(() => ["SRL", "KAREEM"], []);
 
   const submit = async (draft = false) => {
     // basic validation
-    if (!form.truckId) return toast.error("Truck is required");
-    if (!form.consigneeId) return toast.error("Consignee is required");
+    if (!form.truckNumber) return toast.error("Truck is required");
+    if (!form.consigneeName) return toast.error("Consignee is required");
     if (!form.materialName) return toast.error("Material is required");
     if (!form.weightTons) return toast.error("Weight is required");
     if (!form.ratePerTon) return toast.error("Rate/Ton is required");
@@ -191,16 +184,12 @@ function NewMemo() {
           </Field>
           <Field label="Consignee" required>
             <Combobox
-              options={(consignees ?? []).map((c) => ({ value: c.id, label: c.companyName, keywords: `${c.city} ${c.contactPerson}` }))}
-              value={form.consigneeId}
-              onChange={(v) => set("consigneeId", v)}
-              onCreate={async (typed) => {
-                const c = await createConsignee({ companyName: typed, address: "", contactPerson: "", phone: "", city: "", state: "", remarks: "" });
-                toast.success(`Consignee "${c.companyName}" added`);
-                return c.id;
-              }}
+              options={(consignees ?? []).map((c) => ({ value: c.companyName, label: c.companyName, keywords: `${c.city} ${c.contactPerson}` }))}
+              value={form.consigneeName}
+              onChange={(v) => set("consigneeName", v)}
+              placeholder="Search or type consignee…"
+              allowCustom
               createLabel="Use"
-              placeholder="Search or add consignee…"
             />
           </Field>
         </Section>
@@ -208,16 +197,16 @@ function NewMemo() {
         <Section title="Vehicle Information">
           <Field label="Truck Number" required>
             <Combobox
-              options={(trucks ?? []).map((t) => ({ value: t.id, label: t.truckNumber, keywords: `${t.driverName} ${t.ownerName}` }))}
-              value={form.truckId}
-              onChange={onTruck}
-              onCreate={async (typed) => {
-                const t = await createTruck({ truckNumber: typed.toUpperCase(), ownerName: "", ownerPhone: "", driverName: "", driverPhone: "", insuranceExpiry: undefined, remarks: "" } as Omit<FleetTruck, "id">);
-                toast.success(`Truck ${t.truckNumber} added`);
-                return t.id;
+              options={(trucks ?? []).map((t) => ({ value: t.truckNumber, label: t.truckNumber, keywords: `${t.driverName} ${t.ownerName}` }))}
+              value={form.truckNumber}
+              onChange={(v) => {
+                set("truckNumber", v);
+                const t = trucks?.find((x) => x.truckNumber === v);
+                if (t) setForm((f) => ({ ...f, driverName: t.driverName, ownerName: t.ownerName, ownerPhone: t.ownerPhone }));
               }}
+              placeholder="Search or type truck number…"
+              allowCustom
               createLabel="Use"
-              placeholder="Search or add truck…"
             />
           </Field>
           <Field label="Driver Name"><Input className="h-11" value={form.driverName} onChange={(e) => set("driverName", e.target.value)} /></Field>

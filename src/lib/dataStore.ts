@@ -26,6 +26,8 @@ export interface FleetTruck {
   driverPhone: string;
   insuranceExpiry?: string;
   remarks?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export interface Consignee {
@@ -37,6 +39,8 @@ export interface Consignee {
   city: string;
   state: string;
   remarks?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export type MemoStatus =
@@ -65,6 +69,8 @@ export interface Memo {
   transportName: string;
   consigneeId: string;
   truckId: string;
+  truckNumber: string;      // free text, like transportName — no link required
+  consigneeName: string;    // free text, like transportName — no link required
   driverName: string;
   ownerName: string;
   ownerPhone: string;
@@ -146,6 +152,8 @@ function rowToTruck(r: any): FleetTruck {
     driverPhone: r.driver_phone ?? "",
     insuranceExpiry: r.insurance_expiry ?? undefined,
     remarks: r.remarks ?? undefined,
+    isDeleted: r.is_deleted ?? false,
+    deletedAt: r.deleted_at ?? undefined,
   };
 }
 function truckToRow(t: Partial<FleetTruck>): Record<string, unknown> {
@@ -157,6 +165,8 @@ function truckToRow(t: Partial<FleetTruck>): Record<string, unknown> {
   if (t.driverPhone !== undefined) row.driver_phone = t.driverPhone;
   if (t.insuranceExpiry !== undefined) row.insurance_expiry = t.insuranceExpiry || null;
   if (t.remarks !== undefined) row.remarks = t.remarks;
+  if (t.isDeleted !== undefined) row.is_deleted = t.isDeleted;
+  if (t.deletedAt !== undefined) row.deleted_at = t.deletedAt;
   return row;
 }
 
@@ -170,6 +180,8 @@ function rowToConsignee(r: any): Consignee {
     city: r.city ?? "",
     state: r.state ?? "",
     remarks: r.remarks ?? undefined,
+    isDeleted: r.is_deleted ?? false,
+    deletedAt: r.deleted_at ?? undefined,
   };
 }
 function consigneeToRow(c: Partial<Consignee>): Record<string, unknown> {
@@ -181,6 +193,8 @@ function consigneeToRow(c: Partial<Consignee>): Record<string, unknown> {
   if (c.city !== undefined) row.city = c.city;
   if (c.state !== undefined) row.state = c.state;
   if (c.remarks !== undefined) row.remarks = c.remarks;
+  if (c.isDeleted !== undefined) row.is_deleted = c.isDeleted;
+  if (c.deletedAt !== undefined) row.deleted_at = c.deletedAt;
   return row;
 }
 
@@ -192,6 +206,8 @@ const MEMO_FIELD_MAP: Record<string, string> = {
   transportName: "transport_name",
   consigneeId: "consignee_id",
   truckId: "truck_id",
+  truckNumber: "truck_number",
+  consigneeName: "consignee_name",
   driverName: "driver_name",
   ownerName: "owner_name",
   ownerPhone: "owner_phone",
@@ -231,6 +247,8 @@ function rowToMemo(r: any): Memo {
     transportName: r.transport_name ?? "",
     consigneeId: r.consignee_id,
     truckId: r.truck_id,
+    truckNumber: r.truck_number ?? "",
+    consigneeName: r.consignee_name ?? "",
     driverName: r.driver_name ?? "",
     ownerName: r.owner_name ?? "",
     ownerPhone: r.owner_phone ?? "",
@@ -387,7 +405,11 @@ export async function updateSettings(patch: Partial<Settings>): Promise<Settings
 // -------------------------- TRUCKS ------------------------------------------
 
 export async function getTrucks(): Promise<FleetTruck[]> {
-  const { data, error } = await supabase.from("fleet_trucks").select("*").order("truck_number");
+  const { data, error } = await supabase
+    .from("fleet_trucks")
+    .select("*")
+    .eq("is_deleted", false)
+    .order("truck_number");
   if (error) throw error;
   return (data ?? []).map(rowToTruck);
 }
@@ -422,6 +444,20 @@ export async function updateTruck(id: string, patch: Partial<FleetTruck>): Promi
   return rowToTruck(data);
 }
 export async function deleteTruck(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("fleet_trucks")
+    .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+export async function restoreTruck(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("fleet_trucks")
+    .update({ is_deleted: false, deleted_at: null })
+    .eq("id", id);
+  if (error) throw error;
+}
+export async function permanentlyDeleteTruck(id: string): Promise<void> {
   const { error } = await supabase.from("fleet_trucks").delete().eq("id", id);
   if (error) throw error;
 }
@@ -429,7 +465,11 @@ export async function deleteTruck(id: string): Promise<void> {
 // -------------------------- CONSIGNEES --------------------------------------
 
 export async function getConsignees(): Promise<Consignee[]> {
-  const { data, error } = await supabase.from("consignees").select("*").order("company_name");
+  const { data, error } = await supabase
+    .from("consignees")
+    .select("*")
+    .eq("is_deleted", false)
+    .order("company_name");
   if (error) throw error;
   return (data ?? []).map(rowToConsignee);
 }
@@ -464,8 +504,72 @@ export async function updateConsignee(id: string, patch: Partial<Consignee>): Pr
   return rowToConsignee(data);
 }
 export async function deleteConsignee(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("consignees")
+    .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+export async function restoreConsignee(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("consignees")
+    .update({ is_deleted: false, deleted_at: null })
+    .eq("id", id);
+  if (error) throw error;
+}
+export async function permanentlyDeleteConsignee(id: string): Promise<void> {
   const { error } = await supabase.from("consignees").delete().eq("id", id);
   if (error) throw error;
+}
+
+// -------------------------- UNIFIED TRASH (memos + trucks + consignees) -----
+
+export interface TrashItem {
+  kind: "Memo" | "Truck" | "Consignee";
+  id: string;
+  label: string;       // display text — memo number / truck number / company name
+  deletedAt?: string;
+}
+
+export async function getAllTrashItems(): Promise<TrashItem[]> {
+  const [memos, trucks, consignees] = await Promise.all([
+    getTrashedMemos(),
+    supabase.from("fleet_trucks").select("*").eq("is_deleted", true),
+    supabase.from("consignees").select("*").eq("is_deleted", true),
+  ]);
+  const truckItems: TrashItem[] = (trucks.data ?? []).map((r: any) => ({
+    kind: "Truck",
+    id: r.id,
+    label: r.truck_number,
+    deletedAt: r.deleted_at,
+  }));
+  const consigneeItems: TrashItem[] = (consignees.data ?? []).map((r: any) => ({
+    kind: "Consignee",
+    id: r.id,
+    label: r.company_name,
+    deletedAt: r.deleted_at,
+  }));
+  const memoItems: TrashItem[] = memos.map((m) => ({
+    kind: "Memo",
+    id: m.id,
+    label: m.memoNumber,
+    deletedAt: m.deletedAt,
+  }));
+  return [...memoItems, ...truckItems, ...consigneeItems].sort((a, b) =>
+    (b.deletedAt ?? "").localeCompare(a.deletedAt ?? ""),
+  );
+}
+
+export async function restoreTrashItem(item: TrashItem): Promise<void> {
+  if (item.kind === "Memo") return restoreMemo(item.id);
+  if (item.kind === "Truck") return restoreTruck(item.id);
+  if (item.kind === "Consignee") return restoreConsignee(item.id);
+}
+
+export async function permanentlyDeleteTrashItem(item: TrashItem): Promise<void> {
+  if (item.kind === "Memo") return permanentlyDeleteMemo(item.id);
+  if (item.kind === "Truck") return permanentlyDeleteTruck(item.id);
+  if (item.kind === "Consignee") return permanentlyDeleteConsignee(item.id);
 }
 
 // -------------------------- MEMOS -------------------------------------------
