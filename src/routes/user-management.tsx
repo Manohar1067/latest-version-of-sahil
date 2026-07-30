@@ -103,6 +103,35 @@ function UserManagement() {
     loadUsers();
   }
 
+  const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
+  const [resetPin, setResetPinValue] = useState("");
+  const [resetting, setResetting] = useState(false);
+
+  async function handleResetPin() {
+    if (!resetTarget || !/^\d{6}$/.test(resetPin)) {
+      toast.error("Enter a 6-digit PIN");
+      return;
+    }
+    setResetting(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      const { data, error } = await supabase.functions.invoke("create-user", {
+        body: { action: "reset_pin", targetAuthUserId: resetTarget.auth_user_id, newPin: resetPin },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (error || data?.error) {
+        toast.error(data?.error ?? error?.message ?? "Failed to reset PIN");
+        return;
+      }
+      toast.success(`PIN reset for ${resetTarget.name}`);
+      setResetTarget(null);
+      setResetPinValue("");
+    } finally {
+      setResetting(false);
+    }
+  }
+
   async function changeRole(u: UserRow, role: UserRole) {
     const { error } = await supabase.from("profiles").update({ role }).eq("id", u.id);
     if (error) {
@@ -233,9 +262,14 @@ function UserManagement() {
                     </span>
                   </td>
                   <td>
-                    <Button variant="outline" size="sm" onClick={() => toggleActive(u)}>
-                      {u.active ? "Disable" : "Enable"}
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => toggleActive(u)}>
+                        {u.active ? "Disable" : "Enable"}
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => setResetTarget(u)}>
+                        Reset PIN
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -243,6 +277,29 @@ function UserManagement() {
           </table>
         )}
       </div>
+
+      <Dialog open={!!resetTarget} onOpenChange={(open) => !open && setResetTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset PIN for {resetTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label>New 6-digit PIN</Label>
+            <Input
+              value={resetPin}
+              onChange={(e) => setResetPinValue(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              maxLength={6}
+              placeholder="000000"
+            />
+            <p className="text-xs text-muted-foreground">
+              Tell {resetTarget?.name} their new PIN directly — it won't be emailed or shown again after this.
+            </p>
+            <Button className="w-full" onClick={handleResetPin} disabled={resetting}>
+              {resetting ? "Resetting..." : "Reset PIN"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

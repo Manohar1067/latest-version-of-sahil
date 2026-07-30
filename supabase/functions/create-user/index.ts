@@ -1,18 +1,13 @@
 // supabase/functions/create-user/index.ts
 //
-// This function runs on Supabase's server, never in the browser. It's the
-// ONLY place allowed to use the Secret key, because creating a real Auth
-// account requires admin privileges that must never reach client code.
-//
-// The client calls this function (via supabase.functions.invoke) instead of
-// ever creating auth users directly. This function:
-//   1. Verifies the CALLER is a logged-in Super Admin (checks their own JWT).
-//   2. Creates the new Supabase Auth user (email + PIN as password).
-//   3. Creates the matching profiles row.
-//   4. Returns the new profile, or an error.
+// Handles TWO actions, both admin-only server-side operations:
+//   - action: "create"  → creates a brand-new Auth user + profile (original behavior)
+//   - action: "reset_pin" → resets an EXISTING user's PIN in-app, no Supabase
+//     dashboard needed. This is what closes the gap: any Super Admin can now
+//     reset any other user's (including another Super Admin's) PIN directly
+//     from the User Management page.
 //
 // Deploy with: supabase functions deploy create-user
-// (requires the Supabase CLI installed locally — see deployment notes below)
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -31,8 +26,6 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Missing authorization" }), { status: 401 });
     }
 
-    // Client authenticated as the caller, using their own token — used only
-    // to verify who is making this request.
     const callerClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -42,7 +35,6 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Invalid session" }), { status: 401 });
     }
 
-    // Admin client — full privileges, used only for the actual creation steps below.
     const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
     const { data: callerProfile } = await adminClient
@@ -52,10 +44,36 @@ serve(async (req) => {
       .single();
 
     if (callerProfile?.role !== "Super Admin") {
-      return new Response(JSON.stringify({ error: "Only Super Admins can create users" }), { status: 403 });
+      return new Response(JSON.stringify({ error: "Only Super Admins can do this" }), { status: 403 });
     }
 
-    const { name, email, phone, role, pin } = await req.json();
+    const body = await req.json();
+    const action = body.action ?? "create";
+
+    if (action === "reset_pin") {
+      const { targetAuthUserId, newPin } = body;
+      if (!targetAuthUserId || !/^\d{6}$/.test(newPin)) {
+        return new Response(JSON.stringify({ error: "Missing target user or invalid PIN (must be 6 digits)" }), { status: 400 });
+      }
+
+      const { error: updateErr } = await adminClient.auth.admin.updateUserById(targetAuthUserId, {
+        password: newPin,
+      });
+      if (updateErr) {
+        return new Response(JSON.stringify({ error: updateErr.message }), { status: 400 });
+      }
+
+      // Update the reference copy in profiles too (see note in profiles_migration.sql)
+      await adminClient.from("profiles").update({ pin: newPin }).eq("auth_user_id", targetAuthUserId);
+
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // action === "create" (original behavior)
+    const { name, email, phone, role, pin } = body;
 
     if (!name || !email || !role || !/^\d{6}$/.test(pin)) {
       return new Response(JSON.stringify({ error: "Missing or invalid fields (PIN must be 6 digits)" }), { status: 400 });
@@ -64,7 +82,7 @@ serve(async (req) => {
     const { data: newAuthUser, error: createErr } = await adminClient.auth.admin.createUser({
       email,
       password: pin,
-      email_confirm: true, // skip email verification — internal fake addresses
+      email_confirm: true,
     });
 
     if (createErr || !newAuthUser?.user) {
@@ -86,7 +104,6 @@ serve(async (req) => {
       .single();
 
     if (profileErr) {
-      // Roll back the auth user if the profile insert failed, to avoid orphaned accounts
       await adminClient.auth.admin.deleteUser(newAuthUser.user.id);
       return new Response(JSON.stringify({ error: profileErr.message }), { status: 400 });
     }
