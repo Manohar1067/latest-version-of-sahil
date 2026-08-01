@@ -20,6 +20,7 @@ import { Route as ConsigneesRouteImport } from './routes/consignees'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MemoIdRouteImport } from './routes/memo.$id'
+import { Route as ApiKeepaliveRouteImport } from './routes/api/keepalive'
 
 const UserManagementRoute = UserManagementRouteImport.update({
   id: '/user-management',
@@ -76,6 +77,11 @@ const MemoIdRoute = MemoIdRouteImport.update({
   path: '/memo/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiKeepaliveRoute = ApiKeepaliveRouteImport.update({
+  id: '/api/keepalive',
+  path: '/api/keepalive',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/trash': typeof TrashRoute
   '/user-management': typeof UserManagementRoute
+  '/api/keepalive': typeof ApiKeepaliveRoute
   '/memo/$id': typeof MemoIdRoute
 }
 export interface FileRoutesByTo {
@@ -101,6 +108,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/trash': typeof TrashRoute
   '/user-management': typeof UserManagementRoute
+  '/api/keepalive': typeof ApiKeepaliveRoute
   '/memo/$id': typeof MemoIdRoute
 }
 export interface FileRoutesById {
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/trash': typeof TrashRoute
   '/user-management': typeof UserManagementRoute
+  '/api/keepalive': typeof ApiKeepaliveRoute
   '/memo/$id': typeof MemoIdRoute
 }
 export interface FileRouteTypes {
@@ -130,6 +139,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/trash'
     | '/user-management'
+    | '/api/keepalive'
     | '/memo/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -143,6 +153,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/trash'
     | '/user-management'
+    | '/api/keepalive'
     | '/memo/$id'
   id:
     | '__root__'
@@ -156,6 +167,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/trash'
     | '/user-management'
+    | '/api/keepalive'
     | '/memo/$id'
   fileRoutesById: FileRoutesById
 }
@@ -170,6 +182,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   TrashRoute: typeof TrashRoute
   UserManagementRoute: typeof UserManagementRoute
+  ApiKeepaliveRoute: typeof ApiKeepaliveRoute
   MemoIdRoute: typeof MemoIdRoute
 }
 
@@ -252,6 +265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MemoIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/keepalive': {
+      id: '/api/keepalive'
+      path: '/api/keepalive'
+      fullPath: '/api/keepalive'
+      preLoaderRoute: typeof ApiKeepaliveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -266,6 +286,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   TrashRoute: TrashRoute,
   UserManagementRoute: UserManagementRoute,
+  ApiKeepaliveRoute: ApiKeepaliveRoute,
   MemoIdRoute: MemoIdRoute,
 }
 export const routeTree = rootRouteImport
