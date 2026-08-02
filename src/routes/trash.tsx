@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
-import { getTrashedMemos, restoreMemo, permanentlyDeleteMemo, type Memo } from "@/lib/dataStore";
+import { getAllTrashItems, restoreTrashItem, permanentlyDeleteTrashItem, type TrashItem } from "@/lib/dataStore";
 import { Button } from "@/components/ui/button";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { toast } from "sonner";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -14,41 +15,68 @@ import {
 
 export const Route = createFileRoute("/trash")({ component: TrashPage });
 
-function TrashPage() {
-  const { data } = useStoreData<Memo[]>(() => getTrashedMemos(), []);
-  const rows = data ?? [];
-  const [pending, setPending] = useState<Memo | null>(null);
+const KINDS = ["All", "Memo", "Truck", "Consignee"] as const;
 
-  const doRestore = async (r: Memo) => {
-    await restoreMemo(r.id);
-    toast.success(`Memo ${r.memoNumber} restored to Register List`);
+function TrashPage() {
+  const { data, reload } = useStoreData<TrashItem[]>(() => getAllTrashItems(), []);
+  const all = data ?? [];
+  const [tab, setTab] = useState<string>("All");
+  const [pending, setPending] = useState<TrashItem | null>(null);
+
+  const rows = tab === "All" ? all : all.filter((r) => r.kind === tab);
+
+  const doRestore = async (r: TrashItem) => {
+    await restoreTrashItem(r);
+    await reload?.();
+    toast.success(`${r.kind} ${r.label} restored`);
   };
 
   const doPermanentDelete = async () => {
     if (!pending) return;
-    const n = pending.memoNumber;
-    await permanentlyDeleteMemo(pending.id);
+    const { kind, label } = pending;
+    await permanentlyDeleteTrashItem(pending);
     setPending(null);
-    toast.success(`Memo ${n} permanently deleted`);
+    await reload?.();
+    toast.success(`${kind} ${label} permanently deleted`);
   };
 
   return (
     <AppShell title="Trash" breadcrumb="Home / Trash">
       <div className="card-surface p-5">
+        <Tabs value={tab} onValueChange={setTab} className="mb-4">
+          <TabsList>
+            {KINDS.map((k) => (
+              <TabsTrigger key={k} value={k}>
+                {k === "All" ? "All" : `${k}s`}
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {k === "All" ? all.length : all.filter((r) => r.kind === k).length}
+                </span>
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left">
+          <table className="w-full min-w-[700px] text-left">
             <thead className="border-b bg-muted/40 text-xs uppercase text-muted-foreground">
-              <tr><th className="px-3 py-3">Memo #</th><th className="px-3 py-3">Deleted At</th><th className="px-3 py-3">Dispatch</th><th className="px-3 py-3">Destination</th><th className="px-3 py-3 text-right">Net Freight</th><th className="px-3 py-3 text-right">Actions</th></tr>
+              <tr>
+                <th className="px-3 py-3">Type</th>
+                <th className="px-3 py-3">Item</th>
+                <th className="px-3 py-3">Deleted At</th>
+                <th className="px-3 py-3 text-right">Actions</th>
+              </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (<tr><td colSpan={6} className="py-16 text-center text-muted-foreground">Trash is empty</td></tr>)}
+              {rows.length === 0 && (
+                <tr><td colSpan={4} className="py-16 text-center text-muted-foreground">Trash is empty</td></tr>
+              )}
               {rows.map((r) => (
-                <tr key={r.id} className="border-b">
-                  <td className="px-3 py-3 font-semibold">{r.memoNumber}</td>
-                  <td className="px-3 py-3">{formatDate(r.deletedAt)}</td>
-                  <td className="px-3 py-3">{formatDate(r.dispatchDate)}</td>
-                  <td className="px-3 py-3">{r.toLocation}</td>
-                  <td className="px-3 py-3 text-right">{formatMoney(r.netFreight)}</td>
+                <tr key={`${r.kind}-${r.id}`} className="border-b">
+                  <td className="px-3 py-3">
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold">{r.kind}</span>
+                  </td>
+                  <td className="px-3 py-3 font-semibold">{r.label}</td>
+                  <td className="px-3 py-3">{r.deletedAt ? formatDate(r.deletedAt) : "—"}</td>
                   <td className="px-3 py-3">
                     <div className="flex justify-end gap-2">
                       <Button size="sm" variant="outline" onClick={() => doRestore(r)}>
@@ -69,9 +97,11 @@ function TrashPage() {
       <AlertDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Permanently delete memo {pending?.memoNumber}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Permanently delete {pending?.kind.toLowerCase()} {pending?.label}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This memo will be permanently removed from the system. This action cannot be undone.
+              This record will be permanently removed from the system. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
