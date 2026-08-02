@@ -16,6 +16,23 @@ export const Route = createFileRoute("/api/keepalive")({
     handlers: {
       GET: async () => {
         try {
+          // TEMPORARY DEBUG — remove once the real issue is confirmed fixed
+          const urlPresent = !!process.env.VITE_SUPABASE_URL;
+          const keyPresent = !!process.env.VITE_SUPABASE_ANON_KEY;
+          if (!urlPresent || !keyPresent) {
+            return new Response(
+              JSON.stringify({
+                ok: false,
+                debug: {
+                  urlPresent,
+                  keyPresent,
+                  urlPreview: process.env.VITE_SUPABASE_URL?.slice(0, 20) ?? "MISSING",
+                },
+              }),
+              { status: 500, headers: { "Content-Type": "application/json" } },
+            );
+          }
+
           const supabase = createClient(
             process.env.VITE_SUPABASE_URL as string,
             process.env.VITE_SUPABASE_ANON_KEY as string,
