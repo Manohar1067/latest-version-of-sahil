@@ -16,27 +16,33 @@ export const Route = createFileRoute("/api/keepalive")({
     handlers: {
       GET: async () => {
         try {
-          // TEMPORARY DEBUG — remove once the real issue is confirmed fixed
-          const urlPresent = !!process.env.VITE_SUPABASE_URL;
-          const keyPresent = !!process.env.VITE_SUPABASE_ANON_KEY;
-          if (!urlPresent || !keyPresent) {
+          // TEMPORARY DEBUG — testing both possible env var access methods
+          const processUrl = process.env.VITE_SUPABASE_URL;
+          const processKey = process.env.VITE_SUPABASE_ANON_KEY;
+          // @ts-ignore — import.meta.env may not be typed in this server context
+          const importMetaUrl = import.meta.env?.VITE_SUPABASE_URL;
+          // @ts-ignore
+          const importMetaKey = import.meta.env?.VITE_SUPABASE_ANON_KEY;
+
+          const finalUrl = processUrl || importMetaUrl;
+          const finalKey = processKey || importMetaKey;
+
+          if (!finalUrl || !finalKey) {
             return new Response(
               JSON.stringify({
                 ok: false,
                 debug: {
-                  urlPresent,
-                  keyPresent,
-                  urlPreview: process.env.VITE_SUPABASE_URL?.slice(0, 20) ?? "MISSING",
+                  processEnvUrlPresent: !!processUrl,
+                  processEnvKeyPresent: !!processKey,
+                  importMetaUrlPresent: !!importMetaUrl,
+                  importMetaKeyPresent: !!importMetaKey,
                 },
               }),
               { status: 500, headers: { "Content-Type": "application/json" } },
             );
           }
 
-          const supabase = createClient(
-            process.env.VITE_SUPABASE_URL as string,
-            process.env.VITE_SUPABASE_ANON_KEY as string,
-          );
+          const supabase = createClient(finalUrl, finalKey);
           const { error } = await supabase.from("settings").select("id").limit(1);
           if (error) {
             return new Response(JSON.stringify({ ok: false, error: error.message }), {
