@@ -18,7 +18,7 @@ export const Route = createFileRoute("/trash")({ component: TrashPage });
 const KINDS = ["All", "Memo", "Truck", "Consignee"] as const;
 
 function TrashPage() {
-  const { data, reload } = useStoreData<TrashItem[]>(() => getAllTrashItems(), []);
+  const { data, refresh } = useStoreData<TrashItem[]>(() => getAllTrashItems(), []);
   const all = data ?? [];
   const [tab, setTab] = useState<string>("All");
   const [pending, setPending] = useState<TrashItem | null>(null);
@@ -27,7 +27,7 @@ function TrashPage() {
 
   const doRestore = async (r: TrashItem) => {
     await restoreTrashItem(r);
-    await reload?.();
+    refresh();
     toast.success(`${r.kind} ${r.label} restored`);
   };
 
@@ -36,7 +36,7 @@ function TrashPage() {
     const { kind, label } = pending;
     await permanentlyDeleteTrashItem(pending);
     setPending(null);
-    await reload?.();
+    refresh();
     toast.success(`${kind} ${label} permanently deleted`);
   };
 
