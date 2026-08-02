@@ -58,11 +58,17 @@ function ReportsPage() {
   const [range, setRange] = useState<Range>((period === "today" || period === "month" || period === "year" || period === "week") ? period as Range : "month");
   const [type, setType] = useState<string>("summary");
   const chartsRef = useRef<HTMLDivElement>(null);
+  const [focus, setFocus] = useState<{ kind: "truck" | "driver"; id: string; label: string } | null>(null);
 
-  const filtered = useMemo(() => {
+  const inRange = useMemo(() => {
     const s = rangeStart(range).getTime(); const e = rangeEnd(range).getTime();
     return (memos ?? []).filter((m) => { const t = +new Date(m.dispatchDate); return t >= s && t <= e; });
   }, [memos, range]);
+
+  const filtered = useMemo(() => {
+    if (!focus) return inRange;
+    return inRange.filter((m) => (focus.kind === "truck" ? m.truckId === focus.id : m.driverName === focus.id));
+  }, [inRange, focus]);
 
   const revenue = filtered.reduce((s, x) => s + x.netFreight, 0);
   const expense = filtered.reduce((s, x) => s + x.totalExpenses, 0);
@@ -75,7 +81,7 @@ function ReportsPage() {
 
   const truckStats: Array<{ id: string; number: string; trips: number; revenue: number }> = [];
   const groupTruck: Record<string, { trips: number; revenue: number }> = {};
-  filtered.forEach((m) => {
+  inRange.forEach((m) => {
     if (!groupTruck[m.truckId]) groupTruck[m.truckId] = { trips: 0, revenue: 0 };
     groupTruck[m.truckId].trips++;
     groupTruck[m.truckId].revenue += m.netFreight;
@@ -87,7 +93,7 @@ function ReportsPage() {
   truckStats.sort((a, b) => b.revenue - a.revenue);
 
   const driverStats: Record<string, number> = {};
-  filtered.forEach((m) => { driverStats[m.driverName] = (driverStats[m.driverName] || 0) + 1; });
+  inRange.forEach((m) => { driverStats[m.driverName] = (driverStats[m.driverName] || 0) + 1; });
   const topDrivers = Object.entries(driverStats).sort((a, b) => b[1] - a[1]);
 
   // chart data
@@ -199,6 +205,16 @@ function ReportsPage() {
         </div>
       </div>
 
+      {focus && (
+        <div className="card-surface mb-5 flex items-center justify-between gap-4 border-l-4 border-blue-600 p-4">
+          <div className="text-sm">
+            Showing only <span className="font-semibold">{focus.kind === "truck" ? "Truck" : "Driver"} {focus.label}</span>
+            {" "}— {filtered.length} trip(s), {formatMoney(revenue)} revenue
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setFocus(null)}>Back to full report</Button>
+        </div>
+      )}
+
       <div ref={chartsRef} className="mb-5 space-y-5">
         {/* Summary KPIs */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -266,7 +282,7 @@ function ReportsPage() {
           <h3 className="mb-3">Top Trucks</h3>
           <table className="w-full text-left">
             <thead className="border-b text-xs uppercase text-muted-foreground"><tr><th className="py-2">Truck</th><th>Trips</th><th className="text-right">Revenue</th></tr></thead>
-            <tbody>{truckStats.map((t) => (<tr key={t.id} className="border-b"><td className="py-2 font-semibold">{t.number}</td><td>{t.trips}</td><td className="text-right">{formatMoney(t.revenue)}</td></tr>))}
+            <tbody>{truckStats.map((t) => (<tr key={t.id} className={`cursor-pointer border-b hover:bg-muted/50 ${focus?.kind === "truck" && focus.id === t.id ? "bg-blue-50" : ""}`} onClick={() => setFocus({ kind: "truck", id: t.id, label: t.number })}><td className="py-2 font-semibold text-blue-600">{t.number}</td><td>{t.trips}</td><td className="text-right">{formatMoney(t.revenue)}</td></tr>))}
             {truckStats.length === 0 && (<tr><td colSpan={3} className="py-8 text-center text-muted-foreground">No data</td></tr>)}
             </tbody>
           </table>
@@ -277,7 +293,7 @@ function ReportsPage() {
           <h3 className="mb-3">Top Drivers</h3>
           <table className="w-full text-left">
             <thead className="border-b text-xs uppercase text-muted-foreground"><tr><th className="py-2">Driver</th><th className="text-right">Trips</th></tr></thead>
-            <tbody>{topDrivers.map(([d, n]) => (<tr key={d} className="border-b"><td className="py-2 font-semibold">{d}</td><td className="text-right">{n}</td></tr>))}
+            <tbody>{topDrivers.map(([d, n]) => (<tr key={d} className={`cursor-pointer border-b hover:bg-muted/50 ${focus?.kind === "driver" && focus.id === d ? "bg-blue-50" : ""}`} onClick={() => setFocus({ kind: "driver", id: d, label: d })}><td className="py-2 font-semibold text-blue-600">{d}</td><td className="text-right">{n}</td></tr>))}
             {topDrivers.length === 0 && (<tr><td colSpan={2} className="py-8 text-center text-muted-foreground">No data</td></tr>)}
             </tbody>
           </table>
