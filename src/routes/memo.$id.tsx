@@ -4,7 +4,8 @@ import { useStoreData } from "@/lib/useStore";
 import { getMemo, getTruck, getConsignee, getSettings, type Memo, type FleetTruck, type Consignee, type Settings } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Printer, Download, MessageCircle, Mail, ArrowLeft, Pencil } from "lucide-react";
+import { Printer, Download, MessageCircle, Mail, ArrowLeft, Pencil, ChevronDown } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 
@@ -39,6 +40,19 @@ async function buildPdfBlob(el: HTMLElement) {
   pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, h);
   return pdf.output("blob");
 }
+async function buildImageBlob(el: HTMLElement): Promise<Blob> {
+  const canvas = await renderCanvas(el);
+  return new Promise((resolve) =>
+    canvas.toBlob((b) => resolve(b as Blob), "image/png", 1),
+  );
+}
+function saveBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
 
 function MemoView() {
   const { id } = Route.useParams();
@@ -61,16 +75,12 @@ function MemoView() {
     if (print && memo) setTimeout(() => window.print(), 400);
   }, [print, memo]);
 
-  const download = async () => {
+  const download = async (fmt: "pdf" | "png") => {
     if (!printRef.current || !memo) return;
-    toast.info("Generating PDF…");
-    const blob = await buildPdfBlob(printRef.current);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `${memo.memoNumber}.pdf`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-    toast.success("PDF downloaded");
+    toast.info(fmt === "pdf" ? "Generating PDF…" : "Generating image…");
+    const blob = fmt === "pdf" ? await buildPdfBlob(printRef.current) : await buildImageBlob(printRef.current);
+    saveBlob(blob, `${memo.memoNumber}.${fmt}`);
+    toast.success(fmt === "pdf" ? "PDF downloaded" : "Image downloaded");
   };
 
   const shareWhatsApp = async () => {
@@ -86,12 +96,8 @@ function MemoView() {
       catch { /* user cancelled — fall through */ }
     }
     // Desktop fallback: download PDF + open WhatsApp Web with prefilled text
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `${memo.memoNumber}.pdf`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
-    window.open(`https://web.whatsapp.com/send?text=${encodeURIComponent(text + " (PDF attached — please select from your Downloads folder)")}`, "_blank");
+    saveBlob(blob, `${memo.memoNumber}.pdf`);
+    window.open(`https://wa.me/?text=${encodeURIComponent(text + " (PDF attached — please select it from your Downloads folder)")}`, "_blank");
     toast.success("Receipt downloaded — attach it in the WhatsApp window that opened");
   };
 
@@ -99,11 +105,7 @@ function MemoView() {
     if (!printRef.current || !memo) return;
     toast.info("Preparing receipt…");
     const blob = await buildPdfBlob(printRef.current);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `${memo.memoNumber}.pdf`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    saveBlob(blob, `${memo.memoNumber}.pdf`);
     const subject = `Dispatch Memo #${memo.memoNumber}`;
     const body = `Dear Sir/Madam,\n\nPlease find attached dispatch memo #${memo.memoNumber} dated ${formatDate(memo.dispatchDate)}.\n\nDestination: ${memo.toLocation}\nMaterial: ${memo.materialName}\nNet Freight: ${formatMoney(memo.netFreight)}\n\nRegards,\n${settings?.companyName ?? "Sahil Road Lines"}\n${settings?.phone ?? ""}`;
     window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
@@ -122,7 +124,15 @@ function MemoView() {
           <Button variant="outline" onClick={() => nav({ to: "/new-memo", search: { edit: memo.id } as never })}><Pencil className="mr-1 h-4 w-4" />Edit</Button>
           <Button variant="outline" onClick={shareWhatsApp}><MessageCircle className="mr-1 h-4 w-4" />WhatsApp</Button>
           <Button variant="outline" onClick={shareEmail}><Mail className="mr-1 h-4 w-4" />Email</Button>
-          <Button variant="outline" onClick={download}><Download className="mr-1 h-4 w-4" />Download PDF</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline"><Download className="mr-1 h-4 w-4" />Download<ChevronDown className="ml-1 h-4 w-4" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => download("pdf")}>PDF (.pdf)</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => download("png")}>Image (.png)</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button onClick={() => window.print()}><Printer className="mr-1 h-4 w-4" />Print</Button>
         </>
       }
@@ -139,10 +149,10 @@ function MemoView() {
             <div className="border-b-2 border-black px-4 py-3">
               <div className="flex items-center justify-center gap-4">
                 {settings?.logoUrl ? (
-                  <img src={settings.logoUrl} className="h-16 w-16 object-contain" alt="logo" />
+                  <img src={settings.logoUrl} className="h-24 w-24 object-contain" alt="logo" />
                 ) : (
-                  <div className="flex h-14 w-14 rotate-45 items-center justify-center bg-[#0b2a55]">
-                    <div className="h-5 w-5 rotate-45 bg-white" />
+                  <div className="flex h-20 w-20 rotate-45 items-center justify-center bg-[#0b2a55]">
+                    <div className="h-7 w-7 rotate-45 bg-white" />
                   </div>
                 )}
                 <div className="text-center">
@@ -214,8 +224,8 @@ function MemoView() {
 
             {/* Terms — larger, fills remaining space */}
             <div className="flex-1 px-3 py-2" style={{ minHeight: 0 }}>
-              <div className="mb-1 text-[11.5px] font-bold uppercase tracking-wider">Terms &amp; Conditions</div>
-              <pre className="whitespace-pre-wrap font-sans text-[12.5px] leading-[1.35] text-black">{settings?.terms}</pre>
+              <div className="mb-1 text-[13px] font-bold uppercase tracking-wider">Terms &amp; Conditions</div>
+              <pre className="whitespace-pre-wrap font-sans text-[14px] leading-[1.4] text-black">{settings?.terms}</pre>
             </div>
 
             {/* Signatures */}

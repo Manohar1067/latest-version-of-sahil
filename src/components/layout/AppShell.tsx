@@ -52,7 +52,10 @@ export function AppShell({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, profile } = useAuth();
+  const userName = profile?.name ?? "User";
+  const userRole = profile?.role ?? "";
+  const initials = userName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "U";
   const handleLogout = async () => {
     try { await logout(); toast.success("Logged out"); }
     catch { toast.error("Logout failed"); }
@@ -182,13 +185,18 @@ export function AppShell({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="ml-2 flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted" aria-label="Account menu">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-sm font-semibold text-white">AD</div>
-                <span className="text-sm font-medium text-foreground">Admin</span>
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-500 text-sm font-semibold text-white">{initials}</div>
+                <div className="text-left leading-tight">
+                  <div className="text-sm font-medium text-foreground">{userName}</div>
+                  {userRole ? <div className="text-[11px] text-muted-foreground">{userRole}</div> : null}
+                </div>
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <div className="px-2 py-1.5 text-xs text-muted-foreground">Signed in as Admin</div>
+            <DropdownMenuContent align="end" className="w-56">
+              <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                Signed in as <span className="font-semibold text-foreground">{userName}</span>{userRole ? ` · ${userRole}` : ""}
+              </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-700">
                 <LogOut className="mr-2 h-4 w-4" />Logout
