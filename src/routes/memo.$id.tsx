@@ -177,7 +177,7 @@ function MemoView() {
             <div className="border-b-2 border-black px-4 py-3">
               <div className="flex items-center justify-center gap-4">
                 {settings?.logoUrl ? (
-                  <img src={settings.logoUrl} className="h-24 w-24 object-contain" alt="logo" />
+                  <img src={settings.logoUrl} className="h-32 w-32 object-contain" alt="logo" />
                 ) : (
                   <div className="flex h-20 w-20 rotate-45 items-center justify-center bg-[#0b2a55]">
                     <div className="h-7 w-7 rotate-45 bg-white" />
