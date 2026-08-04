@@ -253,7 +253,7 @@ function MemoView() {
             {/* Terms — larger, fills remaining space */}
             <div className="flex-1 px-3 py-2" style={{ minHeight: 0 }}>
               <div className="mb-1 text-[13px] font-bold uppercase tracking-wider">Terms &amp; Conditions</div>
-              <pre className="whitespace-pre-wrap font-sans text-[14px] leading-[1.4] text-black">{settings?.terms}</pre>
+              <pre className="whitespace-pre-wrap font-sans text-[16px] leading-[1.45] text-black">{settings?.terms}</pre>
             </div>
 
             {/* Signatures */}
