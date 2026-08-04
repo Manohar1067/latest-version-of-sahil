@@ -28,8 +28,10 @@ function Cell({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 async function renderCanvas(el: HTMLElement) {
-  const { default: html2canvas } = await import("html2canvas");
-  return html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+  // html2canvas-pro supports modern CSS colors (oklch) used by Tailwind v4;
+  // the legacy html2canvas throws/hangs on them.
+  const { default: html2canvas } = await import("html2canvas-pro");
+  return html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true, logging: false });
 }
 async function buildPdfBlob(el: HTMLElement) {
   const canvas = await renderCanvas(el);
@@ -42,8 +44,8 @@ async function buildPdfBlob(el: HTMLElement) {
 }
 async function buildImageBlob(el: HTMLElement): Promise<Blob> {
   const canvas = await renderCanvas(el);
-  return new Promise((resolve) =>
-    canvas.toBlob((b) => resolve(b as Blob), "image/png", 1),
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Image encoding failed"))), "image/png", 1),
   );
 }
 function saveBlob(blob: Blob, name: string) {
@@ -62,6 +64,7 @@ function MemoView() {
   const { data: settings } = useStoreData<Settings>(() => getSettings(), []);
   const [truck, setTruck] = useState<FleetTruck | undefined>();
   const [consignee, setConsignee] = useState<Consignee | undefined>();
+  const [busy, setBusy] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,36 +78,61 @@ function MemoView() {
     if (print && memo) setTimeout(() => window.print(), 400);
   }, [print, memo]);
 
+  /** Runs a receipt-generation task with a single toast that always resolves. */
+  const withReceipt = async <T,>(
+    label: string,
+    fn: (el: HTMLElement) => Promise<T>,
+  ): Promise<T | undefined> => {
+    if (!printRef.current || !memo || busy) return;
+    const tid = toast.loading(label);
+    setBusy(true);
+    try {
+      const out = await fn(printRef.current);
+      toast.dismiss(tid);
+      return out;
+    } catch (e) {
+      console.error("[receipt]", e);
+      toast.error("Could not generate the receipt", {
+        id: tid,
+        description: e instanceof Error ? e.message : "Unknown error",
+      });
+      return undefined;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const download = async (fmt: "pdf" | "png") => {
-    if (!printRef.current || !memo) return;
-    toast.info(fmt === "pdf" ? "Generating PDF…" : "Generating image…");
-    const blob = fmt === "pdf" ? await buildPdfBlob(printRef.current) : await buildImageBlob(printRef.current);
+    if (!memo) return;
+    const blob = await withReceipt(
+      fmt === "pdf" ? "Generating PDF…" : "Generating image…",
+      (el) => (fmt === "pdf" ? buildPdfBlob(el) : buildImageBlob(el)),
+    );
+    if (!blob) return;
     saveBlob(blob, `${memo.memoNumber}.${fmt}`);
     toast.success(fmt === "pdf" ? "PDF downloaded" : "Image downloaded");
   };
 
   const shareWhatsApp = async () => {
-    if (!printRef.current || !memo) return;
-    toast.info("Preparing receipt…");
-    const blob = await buildPdfBlob(printRef.current);
+    if (!memo) return;
+    const blob = await withReceipt("Preparing receipt…", buildPdfBlob);
+    if (!blob) return;
     const file = new File([blob], `${memo.memoNumber}.pdf`, { type: "application/pdf" });
     const text = `Dispatch Memo #${memo.memoNumber} — ${settings?.companyName ?? "Sahil Road Lines"}`;
-    // Web Share API (mobile)
-    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-    if (nav.canShare && nav.canShare({ files: [file] })) {
-      try { await (navigator as Navigator).share({ files: [file], title: text, text }); return; }
-      catch { /* user cancelled — fall through */ }
+    const n = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+    if (typeof n.share === "function" && n.canShare?.({ files: [file] })) {
+      try { await n.share({ files: [file], title: text, text }); toast.success("Shared"); return; }
+      catch (e) { if ((e as DOMException)?.name === "AbortError") return; }
     }
-    // Desktop fallback: download PDF + open WhatsApp Web with prefilled text
     saveBlob(blob, `${memo.memoNumber}.pdf`);
     window.open(`https://wa.me/?text=${encodeURIComponent(text + " (PDF attached — please select it from your Downloads folder)")}`, "_blank");
     toast.success("Receipt downloaded — attach it in the WhatsApp window that opened");
   };
 
   const shareEmail = async () => {
-    if (!printRef.current || !memo) return;
-    toast.info("Preparing receipt…");
-    const blob = await buildPdfBlob(printRef.current);
+    if (!memo) return;
+    const blob = await withReceipt("Preparing receipt…", buildPdfBlob);
+    if (!blob) return;
     saveBlob(blob, `${memo.memoNumber}.pdf`);
     const subject = `Dispatch Memo #${memo.memoNumber}`;
     const body = `Dear Sir/Madam,\n\nPlease find attached dispatch memo #${memo.memoNumber} dated ${formatDate(memo.dispatchDate)}.\n\nDestination: ${memo.toLocation}\nMaterial: ${memo.materialName}\nNet Freight: ${formatMoney(memo.netFreight)}\n\nRegards,\n${settings?.companyName ?? "Sahil Road Lines"}\n${settings?.phone ?? ""}`;
