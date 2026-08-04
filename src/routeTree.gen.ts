@@ -17,6 +17,7 @@ import { Route as RegisterRouteImport } from './routes/register'
 import { Route as NewMemoRouteImport } from './routes/new-memo'
 import { Route as FleetRouteImport } from './routes/fleet'
 import { Route as ConsigneesRouteImport } from './routes/consignees'
+import { Route as CanvastestRouteImport } from './routes/canvastest'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as MemoIdRouteImport } from './routes/memo.$id'
@@ -62,6 +63,11 @@ const ConsigneesRoute = ConsigneesRouteImport.update({
   path: '/consignees',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CanvastestRoute = CanvastestRouteImport.update({
+  id: '/canvastest',
+  path: '/canvastest',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuditRoute = AuditRouteImport.update({
   id: '/audit',
   path: '/audit',
@@ -86,6 +92,7 @@ const ApiKeepaliveRoute = ApiKeepaliveRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/canvastest': typeof CanvastestRoute
   '/consignees': typeof ConsigneesRoute
   '/fleet': typeof FleetRoute
   '/new-memo': typeof NewMemoRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/canvastest': typeof CanvastestRoute
   '/consignees': typeof ConsigneesRoute
   '/fleet': typeof FleetRoute
   '/new-memo': typeof NewMemoRoute
@@ -115,6 +123,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/audit': typeof AuditRoute
+  '/canvastest': typeof CanvastestRoute
   '/consignees': typeof ConsigneesRoute
   '/fleet': typeof FleetRoute
   '/new-memo': typeof NewMemoRoute
@@ -131,6 +140,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/audit'
+    | '/canvastest'
     | '/consignees'
     | '/fleet'
     | '/new-memo'
@@ -145,6 +155,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/audit'
+    | '/canvastest'
     | '/consignees'
     | '/fleet'
     | '/new-memo'
@@ -159,6 +170,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/audit'
+    | '/canvastest'
     | '/consignees'
     | '/fleet'
     | '/new-memo'
@@ -174,6 +186,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuditRoute: typeof AuditRoute
+  CanvastestRoute: typeof CanvastestRoute
   ConsigneesRoute: typeof ConsigneesRoute
   FleetRoute: typeof FleetRoute
   NewMemoRoute: typeof NewMemoRoute
@@ -244,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ConsigneesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/canvastest': {
+      id: '/canvastest'
+      path: '/canvastest'
+      fullPath: '/canvastest'
+      preLoaderRoute: typeof CanvastestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/audit': {
       id: '/audit'
       path: '/audit'
@@ -278,6 +298,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuditRoute: AuditRoute,
+  CanvastestRoute: CanvastestRoute,
   ConsigneesRoute: ConsigneesRoute,
   FleetRoute: FleetRoute,
   NewMemoRoute: NewMemoRoute,
@@ -292,3 +313,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
