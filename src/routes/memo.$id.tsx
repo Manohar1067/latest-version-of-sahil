@@ -179,8 +179,8 @@ function MemoView() {
                 {settings?.logoUrl ? (
                   <img src={settings.logoUrl} className="h-32 w-32 object-contain" alt="logo" />
                 ) : (
-                  <div className="flex h-20 w-20 rotate-45 items-center justify-center bg-[#0b2a55]">
-                    <div className="h-7 w-7 rotate-45 bg-white" />
+                  <div className="flex h-28 w-28 rotate-45 items-center justify-center bg-[#0b2a55]">
+                    <div className="h-9 w-9 rotate-45 bg-white" />
                   </div>
                 )}
                 <div className="text-center">
