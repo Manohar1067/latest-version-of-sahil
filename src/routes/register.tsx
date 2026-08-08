@@ -89,7 +89,7 @@ function RegisterPage() {
       });
     }
     return rows;
-  }, [memos, trucks, consignees, query, status, truckId, consigneeId, scope]);
+  }, [memos, trucks, consignees, query, status, truckId, consigneeId, paidBy, scope]);
 
   // Value extractor per column, used for both column-filter menus and filtering.
   const colValue = (r: Memo, key: ColKey): string => {
@@ -129,7 +129,7 @@ function RegisterPage() {
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const resetFilters = () => {
-    setQuery(""); setStatus("all"); setTruckId("all"); setConsigneeId("all"); setScope("all"); setPage(1);
+    setQuery(""); setStatus("all"); setTruckId("all"); setConsigneeId("all"); setPaidBy("all"); setScope("all"); setPage(1);
     setColFilters({});
   };
 
@@ -269,6 +269,17 @@ function RegisterPage() {
               <SelectContent>
                 <SelectItem value="all">All consignees</SelectItem>
                 {consignees?.map((c) => (<SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="section-title mb-1 block">Paid By</label>
+            <Select value={paidBy} onValueChange={(v) => { setPaidBy(v); setPage(1); }}>
+              <SelectTrigger className="h-11 min-w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="SRL">Sahil</SelectItem>
+                <SelectItem value="KAREEM">Kareem</SelectItem>
               </SelectContent>
             </Select>
           </div>
