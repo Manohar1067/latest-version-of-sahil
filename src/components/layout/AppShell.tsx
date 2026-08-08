@@ -13,6 +13,7 @@ import {
   Sun,
   Bell,
   Users,
+  ClipboardList,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { getSettings, updateSettings, getMemos, type Settings, type Memo } from "@/lib/dataStore";
