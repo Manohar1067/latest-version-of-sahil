@@ -50,6 +50,7 @@ function RegisterPage() {
   const [status, setStatus] = useState<string>("all");
   const [truckId, setTruckId] = useState<string>("all");
   const [consigneeId, setConsigneeId] = useState<string>("all");
+  const [paidBy, setPaidBy] = useState<string>("all");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -77,6 +78,7 @@ function RegisterPage() {
     if (status !== "all") rows = rows.filter((r) => r.status === status);
     if (truckId !== "all") rows = rows.filter((r) => r.truckId === truckId);
     if (consigneeId !== "all") rows = rows.filter((r) => r.consigneeId === consigneeId);
+    if (paidBy !== "all") rows = rows.filter((r) => r.paidBy === paidBy);
     if (query.trim()) {
       const q = query.toLowerCase();
       rows = rows.filter((r) => {
