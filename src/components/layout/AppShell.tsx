@@ -26,6 +26,7 @@ import { LogOut, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
+import { useCompanyLogo } from "@/lib/useCompanyLogo";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -54,6 +55,7 @@ export function AppShell({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
+  useCompanyLogo(); // keeps the browser tab favicon in sync with the company logo
   const { logout, profile } = useAuth();
   const userName = profile?.name ?? "User";
   const userRole = profile?.role ?? "";
