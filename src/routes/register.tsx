@@ -50,6 +50,7 @@ function RegisterPage() {
   const [status, setStatus] = useState<string>("all");
   const [truckId, setTruckId] = useState<string>("all");
   const [consigneeId, setConsigneeId] = useState<string>("all");
+  const [paidBy, setPaidBy] = useState<string>("all");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -77,6 +78,7 @@ function RegisterPage() {
     if (status !== "all") rows = rows.filter((r) => r.status === status);
     if (truckId !== "all") rows = rows.filter((r) => r.truckId === truckId);
     if (consigneeId !== "all") rows = rows.filter((r) => r.consigneeId === consigneeId);
+    if (paidBy !== "all") rows = rows.filter((r) => r.paidBy === paidBy);
     if (query.trim()) {
       const q = query.toLowerCase();
       rows = rows.filter((r) => {
@@ -87,7 +89,7 @@ function RegisterPage() {
       });
     }
     return rows;
-  }, [memos, trucks, consignees, query, status, truckId, consigneeId, scope]);
+  }, [memos, trucks, consignees, query, status, truckId, consigneeId, paidBy, scope]);
 
   // Value extractor per column, used for both column-filter menus and filtering.
   const colValue = (r: Memo, key: ColKey): string => {
@@ -127,7 +129,7 @@ function RegisterPage() {
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const resetFilters = () => {
-    setQuery(""); setStatus("all"); setTruckId("all"); setConsigneeId("all"); setScope("all"); setPage(1);
+    setQuery(""); setStatus("all"); setTruckId("all"); setConsigneeId("all"); setPaidBy("all"); setScope("all"); setPage(1);
     setColFilters({});
   };
 
@@ -267,6 +269,17 @@ function RegisterPage() {
               <SelectContent>
                 <SelectItem value="all">All consignees</SelectItem>
                 {consignees?.map((c) => (<SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="section-title mb-1 block">Paid By</label>
+            <Select value={paidBy} onValueChange={(v) => { setPaidBy(v); setPage(1); }}>
+              <SelectTrigger className="h-11 min-w-[160px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="SRL">Sahil</SelectItem>
+                <SelectItem value="KAREEM">Kareem</SelectItem>
               </SelectContent>
             </Select>
           </div>

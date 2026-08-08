@@ -13,6 +13,7 @@ import {
   Sun,
   Bell,
   Users,
+  ClipboardList,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { getSettings, updateSettings, getMemos, type Settings, type Memo } from "@/lib/dataStore";
@@ -25,11 +26,13 @@ import { LogOut, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
+import { useCompanyLogo } from "@/lib/useCompanyLogo";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/new-memo", label: "New Memo", icon: FilePlus2 },
   { to: "/register", label: "Register List", icon: List },
+  { to: "/transport-list", label: "Transport List", icon: ClipboardList },
   { to: "/fleet", label: "Fleet Management", icon: Truck },
   { to: "/consignees", label: "Consignee Management", icon: Building2 },
   { to: "/reports", label: "Reports", icon: BarChart3 },
@@ -52,6 +55,7 @@ export function AppShell({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
+  useCompanyLogo(); // keeps the browser tab favicon in sync with the company logo
   const { logout, profile } = useAuth();
   const userName = profile?.name ?? "User";
   const userRole = profile?.role ?? "";

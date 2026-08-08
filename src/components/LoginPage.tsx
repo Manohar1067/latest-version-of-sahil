@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
+import { useCompanyLogo } from "@/lib/useCompanyLogo";
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const logoUrl = useCompanyLogo();
   const [email, setEmail] = useState("");
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false);
@@ -30,9 +32,13 @@ export default function LoginPage() {
         className="bg-white rounded-lg shadow-md p-10 w-full max-w-sm border border-gray-100"
       >
         <div className="flex flex-col items-center mb-8">
-          <div className="w-14 h-14 rounded-lg bg-[#0B2A55] flex items-center justify-center mb-3">
-            <span className="text-white font-bold text-xl">◆</span>
-          </div>
+          {logoUrl ? (
+            <img src={logoUrl} alt="Sahil Road Lines logo" className="mb-3 h-20 w-20 rounded-lg object-contain" />
+          ) : (
+            <div className="w-20 h-20 rounded-lg bg-[#0B2A55] flex items-center justify-center mb-3">
+              <span className="text-white font-bold text-2xl">SRL</span>
+            </div>
+          )}
           <h1 className="text-lg font-bold text-[#0B2A55] tracking-wide">SAHIL ROAD LINES</h1>
           <p className="text-xs text-gray-500 tracking-widest">TRANSPORT ERP</p>
         </div>
