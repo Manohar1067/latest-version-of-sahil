@@ -46,6 +46,7 @@ export interface TransportEntry {
   balance: number;
   unloadingDate?: string;
   haltingDate?: string;
+  haltingCharge: number;
   lrReceivedDate?: string;
   lrSubmittedDate?: string;
   description?: string;
@@ -89,6 +90,7 @@ const FIELD_MAP: Record<string, string> = {
   balance: "balance",
   unloadingDate: "unloading_date",
   haltingDate: "halting_date",
+  haltingCharge: "halting_charge",
   lrReceivedDate: "lr_received_date",
   lrSubmittedDate: "lr_submitted_date",
   description: "description",
@@ -127,6 +129,7 @@ function rowToEntry(r: any): TransportEntry {
     balance: Number(r.balance ?? 0),
     unloadingDate: r.unloading_date ?? undefined,
     haltingDate: r.halting_date ?? undefined,
+    haltingCharge: Number(r.halting_charge ?? 0),
     lrReceivedDate: r.lr_received_date ?? undefined,
     lrSubmittedDate: r.lr_submitted_date ?? undefined,
     description: r.description ?? undefined,
