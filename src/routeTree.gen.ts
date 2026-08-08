@@ -11,14 +11,17 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UserManagementRouteImport } from './routes/user-management'
 import { Route as TrashRouteImport } from './routes/trash'
+import { Route as TransportListRouteImport } from './routes/transport-list'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as RegisterRouteImport } from './routes/register'
+import { Route as NewTransportRouteImport } from './routes/new-transport'
 import { Route as NewMemoRouteImport } from './routes/new-memo'
 import { Route as FleetRouteImport } from './routes/fleet'
 import { Route as ConsigneesRouteImport } from './routes/consignees'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as TransportIdRouteImport } from './routes/transport.$id'
 import { Route as MemoIdRouteImport } from './routes/memo.$id'
 import { Route as ApiKeepaliveRouteImport } from './routes/api/keepalive'
 
@@ -30,6 +33,11 @@ const UserManagementRoute = UserManagementRouteImport.update({
 const TrashRoute = TrashRouteImport.update({
   id: '/trash',
   path: '/trash',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TransportListRoute = TransportListRouteImport.update({
+  id: '/transport-list',
+  path: '/transport-list',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -45,6 +53,11 @@ const ReportsRoute = ReportsRouteImport.update({
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
   path: '/register',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewTransportRoute = NewTransportRouteImport.update({
+  id: '/new-transport',
+  path: '/new-transport',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NewMemoRoute = NewMemoRouteImport.update({
@@ -72,6 +85,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TransportIdRoute = TransportIdRouteImport.update({
+  id: '/transport/$id',
+  path: '/transport/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MemoIdRoute = MemoIdRouteImport.update({
   id: '/memo/$id',
   path: '/memo/$id',
@@ -89,13 +107,16 @@ export interface FileRoutesByFullPath {
   '/consignees': typeof ConsigneesRoute
   '/fleet': typeof FleetRoute
   '/new-memo': typeof NewMemoRoute
+  '/new-transport': typeof NewTransportRoute
   '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
+  '/transport-list': typeof TransportListRoute
   '/trash': typeof TrashRoute
   '/user-management': typeof UserManagementRoute
   '/api/keepalive': typeof ApiKeepaliveRoute
   '/memo/$id': typeof MemoIdRoute
+  '/transport/$id': typeof TransportIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -103,13 +124,16 @@ export interface FileRoutesByTo {
   '/consignees': typeof ConsigneesRoute
   '/fleet': typeof FleetRoute
   '/new-memo': typeof NewMemoRoute
+  '/new-transport': typeof NewTransportRoute
   '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
+  '/transport-list': typeof TransportListRoute
   '/trash': typeof TrashRoute
   '/user-management': typeof UserManagementRoute
   '/api/keepalive': typeof ApiKeepaliveRoute
   '/memo/$id': typeof MemoIdRoute
+  '/transport/$id': typeof TransportIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -118,13 +142,16 @@ export interface FileRoutesById {
   '/consignees': typeof ConsigneesRoute
   '/fleet': typeof FleetRoute
   '/new-memo': typeof NewMemoRoute
+  '/new-transport': typeof NewTransportRoute
   '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
+  '/transport-list': typeof TransportListRoute
   '/trash': typeof TrashRoute
   '/user-management': typeof UserManagementRoute
   '/api/keepalive': typeof ApiKeepaliveRoute
   '/memo/$id': typeof MemoIdRoute
+  '/transport/$id': typeof TransportIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -134,13 +161,16 @@ export interface FileRouteTypes {
     | '/consignees'
     | '/fleet'
     | '/new-memo'
+    | '/new-transport'
     | '/register'
     | '/reports'
     | '/settings'
+    | '/transport-list'
     | '/trash'
     | '/user-management'
     | '/api/keepalive'
     | '/memo/$id'
+    | '/transport/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -148,13 +178,16 @@ export interface FileRouteTypes {
     | '/consignees'
     | '/fleet'
     | '/new-memo'
+    | '/new-transport'
     | '/register'
     | '/reports'
     | '/settings'
+    | '/transport-list'
     | '/trash'
     | '/user-management'
     | '/api/keepalive'
     | '/memo/$id'
+    | '/transport/$id'
   id:
     | '__root__'
     | '/'
@@ -162,13 +195,16 @@ export interface FileRouteTypes {
     | '/consignees'
     | '/fleet'
     | '/new-memo'
+    | '/new-transport'
     | '/register'
     | '/reports'
     | '/settings'
+    | '/transport-list'
     | '/trash'
     | '/user-management'
     | '/api/keepalive'
     | '/memo/$id'
+    | '/transport/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -177,13 +213,16 @@ export interface RootRouteChildren {
   ConsigneesRoute: typeof ConsigneesRoute
   FleetRoute: typeof FleetRoute
   NewMemoRoute: typeof NewMemoRoute
+  NewTransportRoute: typeof NewTransportRoute
   RegisterRoute: typeof RegisterRoute
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
+  TransportListRoute: typeof TransportListRoute
   TrashRoute: typeof TrashRoute
   UserManagementRoute: typeof UserManagementRoute
   ApiKeepaliveRoute: typeof ApiKeepaliveRoute
   MemoIdRoute: typeof MemoIdRoute
+  TransportIdRoute: typeof TransportIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -200,6 +239,13 @@ declare module '@tanstack/react-router' {
       path: '/trash'
       fullPath: '/trash'
       preLoaderRoute: typeof TrashRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/transport-list': {
+      id: '/transport-list'
+      path: '/transport-list'
+      fullPath: '/transport-list'
+      preLoaderRoute: typeof TransportListRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -221,6 +267,13 @@ declare module '@tanstack/react-router' {
       path: '/register'
       fullPath: '/register'
       preLoaderRoute: typeof RegisterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/new-transport': {
+      id: '/new-transport'
+      path: '/new-transport'
+      fullPath: '/new-transport'
+      preLoaderRoute: typeof NewTransportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/new-memo': {
@@ -258,6 +311,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/transport/$id': {
+      id: '/transport/$id'
+      path: '/transport/$id'
+      fullPath: '/transport/$id'
+      preLoaderRoute: typeof TransportIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/memo/$id': {
       id: '/memo/$id'
       path: '/memo/$id'
@@ -281,13 +341,16 @@ const rootRouteChildren: RootRouteChildren = {
   ConsigneesRoute: ConsigneesRoute,
   FleetRoute: FleetRoute,
   NewMemoRoute: NewMemoRoute,
+  NewTransportRoute: NewTransportRoute,
   RegisterRoute: RegisterRoute,
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
+  TransportListRoute: TransportListRoute,
   TrashRoute: TrashRoute,
   UserManagementRoute: UserManagementRoute,
   ApiKeepaliveRoute: ApiKeepaliveRoute,
   MemoIdRoute: MemoIdRoute,
+  TransportIdRoute: TransportIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
