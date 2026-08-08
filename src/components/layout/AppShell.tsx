@@ -30,6 +30,7 @@ const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/new-memo", label: "New Memo", icon: FilePlus2 },
   { to: "/register", label: "Register List", icon: List },
+  { to: "/transport-list", label: "Transport List", icon: ClipboardList },
   { to: "/fleet", label: "Fleet Management", icon: Truck },
   { to: "/consignees", label: "Consignee Management", icon: Building2 },
   { to: "/reports", label: "Reports", icon: BarChart3 },
