@@ -150,8 +150,6 @@ function MemoView() {
         <>
           <Button variant="outline" onClick={() => nav({ to: "/register" })}><ArrowLeft className="mr-1 h-4 w-4" />Back</Button>
           <Button variant="outline" onClick={() => nav({ to: "/new-memo", search: { edit: memo.id } as never })}><Pencil className="mr-1 h-4 w-4" />Edit</Button>
-          <Button variant="outline" onClick={shareWhatsApp}><MessageCircle className="mr-1 h-4 w-4" />WhatsApp</Button>
-          <Button variant="outline" onClick={shareEmail}><Mail className="mr-1 h-4 w-4" />Email</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline"><Download className="mr-1 h-4 w-4" />Download<ChevronDown className="ml-1 h-4 w-4" /></Button>
