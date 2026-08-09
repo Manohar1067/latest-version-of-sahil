@@ -42,7 +42,8 @@ function TransportListPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string>("all");
   const [paidBy, setPaidBy] = useState<string>("all");
-  const [scope, setScope] = useState<string>("all");
+  const [consignee, setConsignee] = useState<string>("all");
+  const [truck, setTruck] = useState<string>("all");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [confirmDel, setConfirmDel] = useState<TransportEntry | null>(null);
