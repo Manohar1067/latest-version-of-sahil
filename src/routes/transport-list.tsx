@@ -119,7 +119,7 @@ function TransportListPage() {
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const resetFilters = () => {
-    setQuery(""); setStatus("all"); setPaidBy("all"); setScope("all"); setPage(1); setColFilters({});
+    setQuery(""); setStatus("all"); setPaidBy("all"); setConsignee("all"); setTruck("all"); setScope("all"); setPage(1); setColFilters({});
   };
 
   const toExportRows = (rows: TransportEntry[]) => rows.map((r) => ({
@@ -225,6 +225,26 @@ function TransportListPage() {
               <SelectContent>
                 <SelectItem value="all">All statuses</SelectItem>
                 {ALL_TRANSPORT_STATUSES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="section-title mb-1 block">Consignee</label>
+            <Select value={consignee} onValueChange={(v) => { setConsignee(v); setPage(1); }}>
+              <SelectTrigger className="h-11 min-w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All consignees</SelectItem>
+                {consigneeOptions.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="section-title mb-1 block">Truck</label>
+            <Select value={truck} onValueChange={(v) => { setTruck(v); setPage(1); }}>
+              <SelectTrigger className="h-11 min-w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All trucks</SelectItem>
+                {truckOptions.map((t) => (<SelectItem key={t} value={t}>{t}</SelectItem>))}
               </SelectContent>
             </Select>
           </div>
