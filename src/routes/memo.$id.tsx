@@ -4,7 +4,7 @@ import { useStoreData } from "@/lib/useStore";
 import { getMemo, getTruck, getConsignee, getSettings, type Memo, type FleetTruck, type Consignee, type Settings } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Printer, Download, MessageCircle, Mail, ArrowLeft, Pencil, ChevronDown } from "lucide-react";
+import { Printer, Download, ArrowLeft, Pencil, ChevronDown } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
@@ -113,32 +113,8 @@ function MemoView() {
     toast.success(fmt === "pdf" ? "PDF downloaded" : "Image downloaded");
   };
 
-  const shareWhatsApp = async () => {
-    if (!memo) return;
-    const blob = await withReceipt("Preparing receipt…", buildPdfBlob);
-    if (!blob) return;
-    const file = new File([blob], `${memo.memoNumber}.pdf`, { type: "application/pdf" });
-    const text = `Dispatch Memo #${memo.memoNumber} — ${settings?.companyName ?? "Sahil Road Lines"}`;
-    const n = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
-    if (typeof n.share === "function" && n.canShare?.({ files: [file] })) {
-      try { await n.share({ files: [file], title: text, text }); toast.success("Shared"); return; }
-      catch (e) { if ((e as DOMException)?.name === "AbortError") return; }
-    }
-    saveBlob(blob, `${memo.memoNumber}.pdf`);
-    window.open(`https://wa.me/?text=${encodeURIComponent(text + " (PDF attached — please select it from your Downloads folder)")}`, "_blank");
-    toast.success("Receipt downloaded — attach it in the WhatsApp window that opened");
-  };
+  // WhatsApp / Email sharing intentionally removed for now — Print & Download only.
 
-  const shareEmail = async () => {
-    if (!memo) return;
-    const blob = await withReceipt("Preparing receipt…", buildPdfBlob);
-    if (!blob) return;
-    saveBlob(blob, `${memo.memoNumber}.pdf`);
-    const subject = `Dispatch Memo #${memo.memoNumber}`;
-    const body = `Dear Sir/Madam,\n\nPlease find attached dispatch memo #${memo.memoNumber} dated ${formatDate(memo.dispatchDate)}.\n\nDestination: ${memo.toLocation}\nMaterial: ${memo.materialName}\nNet Freight: ${formatMoney(memo.netFreight)}\n\nRegards,\n${settings?.companyName ?? "Sahil Road Lines"}\n${settings?.phone ?? ""}`;
-    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    toast.success("Receipt downloaded — attach it to the email that opened");
-  };
 
   if (!memo) return <AppShell title="Memo"><div className="card-surface p-8 text-center">Loading…</div></AppShell>;
 
@@ -150,8 +126,6 @@ function MemoView() {
         <>
           <Button variant="outline" onClick={() => nav({ to: "/register" })}><ArrowLeft className="mr-1 h-4 w-4" />Back</Button>
           <Button variant="outline" onClick={() => nav({ to: "/new-memo", search: { edit: memo.id } as never })}><Pencil className="mr-1 h-4 w-4" />Edit</Button>
-          <Button variant="outline" onClick={shareWhatsApp}><MessageCircle className="mr-1 h-4 w-4" />WhatsApp</Button>
-          <Button variant="outline" onClick={shareEmail}><Mail className="mr-1 h-4 w-4" />Email</Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline"><Download className="mr-1 h-4 w-4" />Download<ChevronDown className="ml-1 h-4 w-4" /></Button>

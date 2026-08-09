@@ -116,9 +116,14 @@ function UserManagement() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
+      if (!token) {
+        toast.error("Your session expired — please sign in again");
+        return;
+      }
       const { data, error } = await supabase.functions.invoke("create-user", {
+        method: "POST",
         body: { action: "reset_pin", targetAuthUserId: resetTarget.auth_user_id, newPin: resetPin },
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
       if (error || data?.error) {
         toast.error(data?.error ?? error?.message ?? "Failed to reset PIN");
@@ -127,6 +132,8 @@ function UserManagement() {
       toast.success(`PIN reset for ${resetTarget.name}`);
       setResetTarget(null);
       setResetPinValue("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to reset PIN");
     } finally {
       setResetting(false);
     }

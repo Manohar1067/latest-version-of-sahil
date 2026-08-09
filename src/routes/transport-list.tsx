@@ -42,6 +42,8 @@ function TransportListPage() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string>("all");
   const [paidBy, setPaidBy] = useState<string>("all");
+  const [consignee, setConsignee] = useState<string>("all");
+  const [truck, setTruck] = useState<string>("all");
   const [scope, setScope] = useState<string>("all");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
@@ -58,6 +60,8 @@ function TransportListPage() {
 
     if (status !== "all") rows = rows.filter((r) => r.status === status);
     if (paidBy !== "all") rows = rows.filter((r) => r.paidBy === paidBy);
+    if (consignee !== "all") rows = rows.filter((r) => (r.consigneeName || "—") === consignee);
+    if (truck !== "all") rows = rows.filter((r) => (r.truckNumber || "—") === truck);
     if (query.trim()) {
       const q = query.toLowerCase();
       rows = rows.filter((r) =>
@@ -66,7 +70,16 @@ function TransportListPage() {
       );
     }
     return rows;
-  }, [entries, query, status, paidBy, scope]);
+  }, [entries, query, status, paidBy, consignee, truck, scope]);
+
+  const consigneeOptions = useMemo(
+    () => Array.from(new Set((entries ?? []).map((e) => e.consigneeName || "—"))).sort(),
+    [entries],
+  );
+  const truckOptions = useMemo(
+    () => Array.from(new Set((entries ?? []).map((e) => e.truckNumber || "—"))).sort(),
+    [entries],
+  );
 
   const colValue = (r: TransportEntry, key: ColKey): string => {
     switch (key) {
@@ -106,7 +119,7 @@ function TransportListPage() {
   const pageRows = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const resetFilters = () => {
-    setQuery(""); setStatus("all"); setPaidBy("all"); setScope("all"); setPage(1); setColFilters({});
+    setQuery(""); setStatus("all"); setPaidBy("all"); setConsignee("all"); setTruck("all"); setScope("all"); setPage(1); setColFilters({});
   };
 
   const toExportRows = (rows: TransportEntry[]) => rows.map((r) => ({
@@ -216,6 +229,26 @@ function TransportListPage() {
             </Select>
           </div>
           <div>
+            <label className="section-title mb-1 block">Consignee</label>
+            <Select value={consignee} onValueChange={(v) => { setConsignee(v); setPage(1); }}>
+              <SelectTrigger className="h-11 min-w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All consignees</SelectItem>
+                {consigneeOptions.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="section-title mb-1 block">Truck</label>
+            <Select value={truck} onValueChange={(v) => { setTruck(v); setPage(1); }}>
+              <SelectTrigger className="h-11 min-w-[180px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All trucks</SelectItem>
+                {truckOptions.map((t) => (<SelectItem key={t} value={t}>{t}</SelectItem>))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
             <label className="section-title mb-1 block">Paid By</label>
             <Select value={paidBy} onValueChange={(v) => { setPaidBy(v); setPage(1); }}>
               <SelectTrigger className="h-11 min-w-[160px]"><SelectValue /></SelectTrigger>
@@ -245,7 +278,7 @@ function TransportListPage() {
                     </span>
                   </th>
                 ))}
-                <th className="px-3 py-3 text-right">Actions</th>
+                <th className="sticky right-0 z-10 bg-muted px-3 py-3 text-right shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -260,7 +293,7 @@ function TransportListPage() {
                   {cols.map((c) => (
                     <td key={c.key} className={`px-3 py-3 ${c.align === "right" ? "text-right" : ""}`}>{c.render(r)}</td>
                   ))}
-                  <td className="px-3 py-3">
+                  <td className="sticky right-0 z-10 bg-background px-3 py-3 shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">
                     <div className="flex justify-end gap-1">
                       <Link to="/transport/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button></Link>
                       <Link to="/new-transport" search={{ edit: r.id }}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>

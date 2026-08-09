@@ -1,11 +1,8 @@
 // supabase/functions/create-user/index.ts
 //
 // Handles TWO actions, both admin-only server-side operations:
-//   - action: "create"  → creates a brand-new Auth user + profile (original behavior)
-//   - action: "reset_pin" → resets an EXISTING user's PIN in-app, no Supabase
-//     dashboard needed. This is what closes the gap: any Super Admin can now
-//     reset any other user's (including another Super Admin's) PIN directly
-//     from the User Management page.
+//   - action: "create"  → creates a brand-new Auth user + profile
+//   - action: "reset_pin" → resets an EXISTING user's PIN (Super Admin only)
 //
 // Deploy with: supabase functions deploy create-user
 
@@ -15,25 +12,40 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
+// Browsers send a CORS preflight (OPTIONS) before any POST carrying custom
+// headers. Without these headers the request never reaches the function and
+// the client reports "Failed to send a request to the Edge Function".
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Max-Age": "86400",
+};
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
+
 serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
+    return json({ error: "Method not allowed" }, 405);
   }
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization" }), { status: 401 });
-    }
+    if (!authHeader) return json({ error: "Missing authorization" }, 401);
 
     const callerClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
 
     const { data: callerUser, error: callerErr } = await callerClient.auth.getUser();
-    if (callerErr || !callerUser?.user) {
-      return new Response(JSON.stringify({ error: "Invalid session" }), { status: 401 });
-    }
+    if (callerErr || !callerUser?.user) return json({ error: "Invalid session" }, 401);
 
     const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -44,7 +56,7 @@ serve(async (req) => {
       .single();
 
     if (callerProfile?.role !== "Super Admin") {
-      return new Response(JSON.stringify({ error: "Only Super Admins can do this" }), { status: 403 });
+      return json({ error: "Only Super Admins can do this" }, 403);
     }
 
     const body = await req.json();
@@ -53,30 +65,24 @@ serve(async (req) => {
     if (action === "reset_pin") {
       const { targetAuthUserId, newPin } = body;
       if (!targetAuthUserId || !/^\d{6}$/.test(newPin)) {
-        return new Response(JSON.stringify({ error: "Missing target user or invalid PIN (must be 6 digits)" }), { status: 400 });
+        return json({ error: "Missing target user or invalid PIN (must be 6 digits)" }, 400);
       }
 
       const { error: updateErr } = await adminClient.auth.admin.updateUserById(targetAuthUserId, {
         password: newPin,
       });
-      if (updateErr) {
-        return new Response(JSON.stringify({ error: updateErr.message }), { status: 400 });
-      }
+      if (updateErr) return json({ error: updateErr.message }, 400);
 
-      // Update the reference copy in profiles too (see note in profiles_migration.sql)
       await adminClient.from("profiles").update({ pin: newPin }).eq("auth_user_id", targetAuthUserId);
 
-      return new Response(JSON.stringify({ success: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return json({ success: true });
     }
 
-    // action === "create" (original behavior)
+    // action === "create"
     const { name, email, phone, role, pin } = body;
 
     if (!name || !email || !role || !/^\d{6}$/.test(pin)) {
-      return new Response(JSON.stringify({ error: "Missing or invalid fields (PIN must be 6 digits)" }), { status: 400 });
+      return json({ error: "Missing or invalid fields (PIN must be 6 digits)" }, 400);
     }
 
     const { data: newAuthUser, error: createErr } = await adminClient.auth.admin.createUser({
@@ -86,7 +92,7 @@ serve(async (req) => {
     });
 
     if (createErr || !newAuthUser?.user) {
-      return new Response(JSON.stringify({ error: createErr?.message ?? "Failed to create auth user" }), { status: 400 });
+      return json({ error: createErr?.message ?? "Failed to create auth user" }, 400);
     }
 
     const { data: newProfile, error: profileErr } = await adminClient
@@ -105,14 +111,11 @@ serve(async (req) => {
 
     if (profileErr) {
       await adminClient.auth.admin.deleteUser(newAuthUser.user.id);
-      return new Response(JSON.stringify({ error: profileErr.message }), { status: 400 });
+      return json({ error: profileErr.message }, 400);
     }
 
-    return new Response(JSON.stringify({ profile: newProfile }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return json({ profile: newProfile });
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error).message }), { status: 500 });
+    return json({ error: (e as Error).message }, 500);
   }
 });

@@ -27,6 +27,25 @@ function SettingsPage() {
   const [pendingImportJson, setPendingImportJson] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<{ trucks: number; consignees: number; memos: number } | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [changingPin, setChangingPin] = useState(false);
+
+  // Changing your OWN password needs no admin privileges — call Supabase Auth
+  // directly instead of routing through the admin Edge Function.
+  const changePin = async () => {
+    if (!/^\d{6}$/.test(newPin)) { toast.error("PIN must be exactly 6 digits"); return; }
+    if (newPin !== confirmPin) { toast.error("PINs do not match"); return; }
+    setChangingPin(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPin });
+      if (error) { toast.error(error.message); return; }
+      toast.success("Your PIN has been changed");
+      setNewPin(""); setConfirmPin("");
+    } finally {
+      setChangingPin(false);
+    }
+  };
 
   useEffect(() => { if (data) setForm(data); }, [data]);
 
@@ -138,6 +157,40 @@ function SettingsPage() {
           <div className="mb-5 border-b" />
           <Textarea rows={7} value={form.terms} onChange={(e) => set("terms", e.target.value)} />
         </div>
+
+        <div className="card-surface p-6">
+          <div className="section-title mb-2">Change My PIN</div>
+          <div className="mb-5 border-b" />
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div>
+              <Label>New 6-digit PIN</Label>
+              <Input
+                className="h-11 mt-1.5 tracking-[0.4em]"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="••••••"
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+            </div>
+            <div>
+              <Label>Confirm New PIN</Label>
+              <Input
+                className="h-11 mt-1.5 tracking-[0.4em]"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="••••••"
+                value={confirmPin}
+                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <Button onClick={changePin} disabled={changingPin}>{changingPin ? "Updating…" : "Change PIN"}</Button>
+            <span className="text-xs text-muted-foreground">This changes the PIN for the account you are signed in with.</span>
+          </div>
+        </div>
+
 
         <div className="card-surface p-6">
           <div className="section-title mb-2">Backup / Restore</div>
