@@ -60,6 +60,8 @@ function TransportListPage() {
 
     if (status !== "all") rows = rows.filter((r) => r.status === status);
     if (paidBy !== "all") rows = rows.filter((r) => r.paidBy === paidBy);
+    if (consignee !== "all") rows = rows.filter((r) => (r.consigneeName || "—") === consignee);
+    if (truck !== "all") rows = rows.filter((r) => (r.truckNumber || "—") === truck);
     if (query.trim()) {
       const q = query.toLowerCase();
       rows = rows.filter((r) =>
@@ -68,7 +70,16 @@ function TransportListPage() {
       );
     }
     return rows;
-  }, [entries, query, status, paidBy, scope]);
+  }, [entries, query, status, paidBy, consignee, truck, scope]);
+
+  const consigneeOptions = useMemo(
+    () => Array.from(new Set((entries ?? []).map((e) => e.consigneeName || "—"))).sort(),
+    [entries],
+  );
+  const truckOptions = useMemo(
+    () => Array.from(new Set((entries ?? []).map((e) => e.truckNumber || "—"))).sort(),
+    [entries],
+  );
 
   const colValue = (r: TransportEntry, key: ColKey): string => {
     switch (key) {
