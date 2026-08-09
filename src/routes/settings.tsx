@@ -27,6 +27,25 @@ function SettingsPage() {
   const [pendingImportJson, setPendingImportJson] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<{ trucks: number; consignees: number; memos: number } | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [changingPin, setChangingPin] = useState(false);
+
+  // Changing your OWN password needs no admin privileges — call Supabase Auth
+  // directly instead of routing through the admin Edge Function.
+  const changePin = async () => {
+    if (!/^\d{6}$/.test(newPin)) { toast.error("PIN must be exactly 6 digits"); return; }
+    if (newPin !== confirmPin) { toast.error("PINs do not match"); return; }
+    setChangingPin(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPin });
+      if (error) { toast.error(error.message); return; }
+      toast.success("Your PIN has been changed");
+      setNewPin(""); setConfirmPin("");
+    } finally {
+      setChangingPin(false);
+    }
+  };
 
   useEffect(() => { if (data) setForm(data); }, [data]);
 
