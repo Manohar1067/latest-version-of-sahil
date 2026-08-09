@@ -278,7 +278,7 @@ function TransportListPage() {
                     </span>
                   </th>
                 ))}
-                <th className="px-3 py-3 text-right">Actions</th>
+                <th className="sticky right-0 z-10 bg-muted px-3 py-3 text-right shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -293,7 +293,7 @@ function TransportListPage() {
                   {cols.map((c) => (
                     <td key={c.key} className={`px-3 py-3 ${c.align === "right" ? "text-right" : ""}`}>{c.render(r)}</td>
                   ))}
-                  <td className="px-3 py-3">
+                  <td className="sticky right-0 z-10 bg-background px-3 py-3 shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">
                     <div className="flex justify-end gap-1">
                       <Link to="/transport/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button></Link>
                       <Link to="/new-transport" search={{ edit: r.id }}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>
