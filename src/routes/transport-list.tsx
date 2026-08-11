@@ -123,7 +123,7 @@ function TransportListPage() {
   };
 
   const toExportRows = (rows: TransportEntry[]) => rows.map((r) => ({
-    "Entry #": r.entryNumber,
+    "Memo Number": r.entryNumber,
     "Dispatch": formatDate(r.dispatchDate),
     "Truck": r.truckNumber,
     "Transport": r.transportName,
@@ -154,7 +154,7 @@ function TransportListPage() {
 
   type Col = { key: ColKey; label: string; align?: "left" | "right"; render: (r: TransportEntry) => React.ReactNode };
   const cols: Col[] = [
-    { key: "entryNumber", label: "Entry #", render: (r) => <Link to="/transport/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.entryNumber}</Link> },
+    { key: "entryNumber", label: "Memo Number", render: (r) => <Link to="/transport/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.entryNumber}</Link> },
     { key: "dispatch", label: "Dispatch", render: (r) => <span className="whitespace-nowrap">{formatDate(r.dispatchDate)}</span> },
     { key: "truck", label: "Truck", render: (r) => <span className="font-semibold whitespace-nowrap">{r.truckNumber || "—"}</span> },
     { key: "transport", label: "Transport", render: (r) => r.transportName },
@@ -194,7 +194,18 @@ function TransportListPage() {
       }
     >
       <div className="card-surface p-5">
-        <div className="relative mb-4">
+        {error && (
+          <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            Could not load transport entries: {error}
+          </div>
+        )}
+        {!error && !loading && (entries?.length ?? 0) === 0 && (
+          <div className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-400">
+            The transport_list table returned 0 rows for your account. If rows exist in the database, your account is
+            not permitted to read them (row-level security) — no filter on this page is excluding them.
+          </div>
+        )}
+
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
@@ -296,7 +307,7 @@ function TransportListPage() {
                   <td className="sticky right-0 z-10 bg-background px-3 py-3 shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">
                     <div className="flex justify-end gap-1">
                       <Link to="/transport/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button></Link>
-                      <Link to="/new-transport" search={{ edit: r.id }}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>
+                      <Link to="/transport-edit/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>
                       <Button size="icon" variant="ghost" onClick={() => setConfirmDel(r)}>
                         <Trash2 className="h-4 w-4 text-red-500" />
                       </Button>
