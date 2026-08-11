@@ -94,6 +94,14 @@ function MemoView() {
   const [busy, setBusy] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
+  /** Existing terms text, split into numbered points. Content is never altered. */
+  const terms = (settings?.terms ?? "")
+    .split(/\r?\n/)
+    .map((t) => t.replace(/^\s*(\d+[.)]\s*|[-•*]\s*)/, "").trim())
+    .filter(Boolean);
+
+
+
   useEffect(() => {
     if (memo) {
       getTruck(memo.truckId).then(setTruck);
