@@ -37,7 +37,7 @@ type ColKey =
 
 function TransportListPage() {
   const nav = useNavigate();
-  const { data: entries } = useTransportData<TransportEntry[]>(() => getTransportEntries(), []);
+  const { data: entries, loading, error } = useTransportData<TransportEntry[]>(() => getTransportEntries(), []);
 
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string>("all");

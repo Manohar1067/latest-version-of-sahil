@@ -22,6 +22,7 @@ import { Route as ConsigneesRouteImport } from './routes/consignees'
 import { Route as AuditRouteImport } from './routes/audit'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TransportIdRouteImport } from './routes/transport.$id'
+import { Route as TransportEditIdRouteImport } from './routes/transport-edit.$id'
 import { Route as MemoIdRouteImport } from './routes/memo.$id'
 import { Route as ApiKeepaliveRouteImport } from './routes/api/keepalive'
 
@@ -90,6 +91,11 @@ const TransportIdRoute = TransportIdRouteImport.update({
   path: '/transport/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TransportEditIdRoute = TransportEditIdRouteImport.update({
+  id: '/transport-edit/$id',
+  path: '/transport-edit/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MemoIdRoute = MemoIdRouteImport.update({
   id: '/memo/$id',
   path: '/memo/$id',
@@ -116,6 +122,7 @@ export interface FileRoutesByFullPath {
   '/user-management': typeof UserManagementRoute
   '/api/keepalive': typeof ApiKeepaliveRoute
   '/memo/$id': typeof MemoIdRoute
+  '/transport-edit/$id': typeof TransportEditIdRoute
   '/transport/$id': typeof TransportIdRoute
 }
 export interface FileRoutesByTo {
@@ -133,6 +140,7 @@ export interface FileRoutesByTo {
   '/user-management': typeof UserManagementRoute
   '/api/keepalive': typeof ApiKeepaliveRoute
   '/memo/$id': typeof MemoIdRoute
+  '/transport-edit/$id': typeof TransportEditIdRoute
   '/transport/$id': typeof TransportIdRoute
 }
 export interface FileRoutesById {
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/user-management': typeof UserManagementRoute
   '/api/keepalive': typeof ApiKeepaliveRoute
   '/memo/$id': typeof MemoIdRoute
+  '/transport-edit/$id': typeof TransportEditIdRoute
   '/transport/$id': typeof TransportIdRoute
 }
 export interface FileRouteTypes {
@@ -170,6 +179,7 @@ export interface FileRouteTypes {
     | '/user-management'
     | '/api/keepalive'
     | '/memo/$id'
+    | '/transport-edit/$id'
     | '/transport/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -187,6 +197,7 @@ export interface FileRouteTypes {
     | '/user-management'
     | '/api/keepalive'
     | '/memo/$id'
+    | '/transport-edit/$id'
     | '/transport/$id'
   id:
     | '__root__'
@@ -204,6 +215,7 @@ export interface FileRouteTypes {
     | '/user-management'
     | '/api/keepalive'
     | '/memo/$id'
+    | '/transport-edit/$id'
     | '/transport/$id'
   fileRoutesById: FileRoutesById
 }
@@ -222,6 +234,7 @@ export interface RootRouteChildren {
   UserManagementRoute: typeof UserManagementRoute
   ApiKeepaliveRoute: typeof ApiKeepaliveRoute
   MemoIdRoute: typeof MemoIdRoute
+  TransportEditIdRoute: typeof TransportEditIdRoute
   TransportIdRoute: typeof TransportIdRoute
 }
 
@@ -318,6 +331,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TransportIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/transport-edit/$id': {
+      id: '/transport-edit/$id'
+      path: '/transport-edit/$id'
+      fullPath: '/transport-edit/$id'
+      preLoaderRoute: typeof TransportEditIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/memo/$id': {
       id: '/memo/$id'
       path: '/memo/$id'
@@ -350,6 +370,7 @@ const rootRouteChildren: RootRouteChildren = {
   UserManagementRoute: UserManagementRoute,
   ApiKeepaliveRoute: ApiKeepaliveRoute,
   MemoIdRoute: MemoIdRoute,
+  TransportEditIdRoute: TransportEditIdRoute,
   TransportIdRoute: TransportIdRoute,
 }
 export const routeTree = rootRouteImport
