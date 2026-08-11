@@ -56,7 +56,7 @@ function TransportEntryView() {
       breadcrumb="Home / Transport List / Entry"
       actions={
         <>
-          <Link to="/new-transport" search={{ edit: entry.id }}>
+          <Link to="/transport-edit/$id" params={{ id: entry.id }}>
             <Button variant="outline"><Pencil className="mr-1 h-4 w-4" />Edit</Button>
           </Link>
           <Button variant="destructive" onClick={() => setConfirmDel(true)}>

@@ -211,7 +211,7 @@ function TransportListPage() {
           <Input
             value={query}
             onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-            placeholder="Search entry # / truck / driver / transport / consignee / destination / material / status / remarks…"
+            placeholder="Search memo number / truck / driver / transport / consignee / destination / material / status / remarks…"
             className="h-12 pl-10 text-base"
           />
         </div>
