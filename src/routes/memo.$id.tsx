@@ -4,7 +4,7 @@ import { useStoreData } from "@/lib/useStore";
 import { getMemo, getTruck, getConsignee, getSettings, type Memo, type FleetTruck, type Consignee, type Settings } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Printer, Download, ArrowLeft, Pencil, ChevronDown } from "lucide-react";
+import { Printer, Download, ArrowLeft, Pencil, ChevronDown, AlertTriangle, FileText, Phone, Mail, MapPin } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
@@ -15,17 +15,44 @@ export const Route = createFileRoute("/memo/$id")({
   validateSearch: (s: Record<string, unknown>): S => ({ print: s.print ? 1 : undefined }),
 });
 
-/** Ledger-style cell: bold user values, regular labels. */
-function Cell({ label, value }: { label: string; value: React.ReactNode }) {
+/* Fixed document colours — a printed business document must not follow the app theme. */
+const NAVY = "#0B2A55";
+const RED = "#C1121F";
+const LINE = "#D6DAE3";
+
+/** Section heading strip inside a details card. */
+function SectionHead({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex border-b border-black last:border-b-0">
-      <div className="w-[42%] shrink-0 border-r border-black bg-gray-50 px-2 py-[5px] text-[11.5px] text-black">{label}</div>
-      <div className="flex-1 px-2 py-[5px] text-[12.5px] font-bold text-black">
-        {value === undefined || value === null || value === "" ? "—" : value}
+    <div
+      className="px-3 py-[6px]"
+      style={{ background: NAVY, color: "#fff", fontSize: "13.5px", fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase" }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Label / value row: light grey label column, bold dynamic value. */
+function Row({ label, value, money, last }: { label: string; value: React.ReactNode; money?: boolean; last?: boolean }) {
+  const empty = value === undefined || value === null || value === "";
+  return (
+    <div className="flex" style={{ borderBottom: last ? "none" : `1px solid ${LINE}` }}>
+      <div
+        className="w-[44%] shrink-0 px-3 py-[6px]"
+        style={{ background: "#F5F6FA", borderRight: `1px solid ${LINE}`, fontSize: "11.5px", color: "#3A4356" }}
+      >
+        {label}
+      </div>
+      <div
+        className="flex-1 px-3 py-[6px]"
+        style={{ fontSize: money ? "13.5px" : "13px", fontWeight: 700, color: money ? NAVY : "#111" }}
+      >
+        {empty ? "—" : value}
       </div>
     </div>
   );
 }
+
 
 async function renderCanvas(el: HTMLElement) {
   // html2canvas-pro supports modern CSS colors (oklch) used by Tailwind v4;
