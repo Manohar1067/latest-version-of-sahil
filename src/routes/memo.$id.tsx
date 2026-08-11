@@ -139,121 +139,179 @@ function MemoView() {
         </>
       }
     >
-      <div className="mx-auto max-w-[820px]">
-        {/* A4 portrait: 210mm x 297mm ≈ 794px x 1123px at 96dpi */}
+      <div className="mx-auto w-full max-w-[860px] overflow-x-auto">
+        {/* A4 portrait canvas: 210mm x 297mm ≈ 794px x 1123px @96dpi */}
         <div
           ref={printRef}
-          className="print-area mx-auto bg-white text-black shadow"
-          style={{ width: "794px", height: "1123px", boxSizing: "border-box", padding: "24px", display: "flex", flexDirection: "column" }}
+          className="print-area mx-auto bg-white text-black shadow-lg"
+          style={{
+            width: "794px",
+            height: "1123px",
+            boxSizing: "border-box",
+            padding: "22px",
+            display: "flex",
+            flexDirection: "column",
+            fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+          }}
         >
-          <div className="flex flex-1 flex-col border-2 border-black" style={{ minHeight: 0 }}>
-            {/* Header — CENTERED */}
-            <div className="border-b-2 border-black px-4 py-3">
-              <div className="flex items-center justify-center gap-4">
+          <div
+            className="flex flex-1 flex-col overflow-hidden rounded-md"
+            style={{ border: `2px solid ${NAVY}`, minHeight: 0 }}
+          >
+            {/* ---------------- HEADER ---------------- */}
+            <div className="avoid-break flex items-stretch" style={{ borderBottom: `2px solid ${NAVY}` }}>
+              <div className="flex flex-1 items-center gap-4 px-4 py-3">
                 {settings?.logoUrl ? (
-                  <img src={settings.logoUrl} className="h-32 w-32 object-contain" alt="logo" />
+                  <img src={settings.logoUrl} className="h-[86px] w-[86px] shrink-0 object-contain" alt="Company logo" />
                 ) : (
-                  <div className="flex h-28 w-28 rotate-45 items-center justify-center bg-[#0b2a55]">
-                    <div className="h-9 w-9 rotate-45 bg-white" />
+                  <div className="flex h-[78px] w-[78px] shrink-0 rotate-45 items-center justify-center" style={{ background: NAVY }}>
+                    <div className="h-7 w-7 rotate-45 bg-white" />
                   </div>
                 )}
-                <div className="text-center">
-                  <div className="text-[26px] font-extrabold leading-tight tracking-tight">{settings?.companyName ?? "SAHIL ROAD LINES"}</div>
-                  <div className="text-[12px] italic text-gray-800">Transport Contractors &amp; Commission Agents</div>
-                  <div className="mt-1 text-[11.5px]">{settings?.address}</div>
-                  <div className="text-[11.5px]">Ph: {settings?.phone}{settings?.gst ? ` · GST: ${settings.gst}` : ""}</div>
-                  <div className="text-[11.5px] font-semibold">{settings?.jurisdictionText}</div>
+                <div>
+                  <div style={{ fontSize: "24px", fontWeight: 800, letterSpacing: "-0.3px", color: NAVY, lineHeight: 1.1 }}>
+                    {settings?.companyName ?? "SAHIL ROAD LINES"}
+                  </div>
+                  <div style={{ fontSize: "12.5px", fontWeight: 600, color: RED }}>
+                    Transport Contractor &amp; Commission Agents
+                  </div>
+                  <div style={{ fontSize: "11.5px", lineHeight: 1.45 }} className="mt-1 text-neutral-800">
+                    {settings?.address}
+                  </div>
+                  <div style={{ fontSize: "11.5px" }} className="text-neutral-800">
+                    Ph: {settings?.phone ?? "—"}{settings?.gst ? `  ·  GST: ${settings.gst}` : ""}
+                  </div>
+                  <div style={{ fontSize: "11.5px", fontWeight: 700, color: NAVY }}>
+                    {settings?.jurisdictionText ?? "Subject to Visakhapatnam Jurisdiction"}
+                  </div>
                 </div>
               </div>
-              <div className="mt-3 flex items-stretch justify-between border-t border-black pt-2">
-                <div><span className="text-[11.5px]">Memo No.: </span><span className="text-[15px] font-black">{memo.memoNumber}</span></div>
-                <div><span className="text-[11.5px]">Date: </span><span className="text-[13px] font-bold">{formatDate(memo.dispatchDate)}</span></div>
+              <div className="flex w-[212px] shrink-0 flex-col justify-center px-3 py-3" style={{ background: "#F3F5F9", borderLeft: `1px solid ${LINE}` }}>
+                <div
+                  className="mb-2 rounded px-3 py-[7px] text-center"
+                  style={{ background: RED, color: "#fff", fontSize: "19px", fontWeight: 800, letterSpacing: "1px" }}
+                >
+                  GOODS RECEIPT
+                </div>
+                <div className="flex justify-between" style={{ fontSize: "11.5px" }}>
+                  <span className="text-neutral-600">Memo No.</span>
+                  <span style={{ fontSize: "14px", fontWeight: 800, color: NAVY }}>{memo.memoNumber}</span>
+                </div>
+                <div className="mt-1 flex justify-between" style={{ fontSize: "11.5px" }}>
+                  <span className="text-neutral-600">Date</span>
+                  <span style={{ fontSize: "13px", fontWeight: 700 }}>{formatDate(memo.dispatchDate)}</span>
+                </div>
               </div>
             </div>
 
-            {/* Trip Info block */}
-            <div className="grid grid-cols-2 border-b-2 border-black">
-              <div className="border-r-2 border-black">
-                <Cell label="From" value={memo.fromLocation} />
-                <Cell label="Destination" value={memo.toLocation} />
-                <Cell label="Transport Name" value={memo.transportName} />
-                <Cell label="Material" value={memo.materialName} />
-                <Cell label="Description" value={memo.description} />
+            {/* ---------------- DETAIL CARDS ---------------- */}
+            <div className="avoid-break grid grid-cols-2" style={{ borderBottom: `2px solid ${NAVY}` }}>
+              <div style={{ borderRight: `2px solid ${NAVY}` }}>
+                <SectionHead>Consignor Details</SectionHead>
+                <Row label="From" value={memo.fromLocation} />
+                <Row label="Transport Name" value={memo.transportName} />
+                <Row label="Material" value={memo.materialName} />
+                <Row label="Description" value={memo.description} />
+                <Row label="Rate / Ton" value={formatMoney(memo.ratePerTon)} money />
+                <Row label="Weight (tons)" value={memo.weightTons} />
+                <Row label="Net Freight" value={formatMoney(memo.netFreight)} money />
+                <Row label="Advance" value={formatMoney(memo.advance)} money />
+                <Row label="Balance" value={formatMoney(memo.balance)} money />
+                <Row label="Paid At" value={`${memo.paidBy}${memo.paymentMethod ? " · " + memo.paymentMethod : ""}`} last />
               </div>
               <div>
-                <Cell label="Truck Number" value={truck?.truckNumber} />
-                <Cell label="Lorry Owner Name" value={memo.ownerName} />
-                <Cell label="Driver Name" value={memo.driverName} />
-                <Cell label="Consignee" value={consignee?.companyName} />
-                <Cell label="Consignor" value={<span className="font-normal text-gray-400">__________________</span>} />
+                <SectionHead>Consignee / Truck Details</SectionHead>
+                <Row label="Truck Number" value={truck?.truckNumber} />
+                <Row label="Lorry Owner Name" value={memo.ownerName} />
+                <Row label="Driver Name" value={memo.driverName} />
+                <Row label="Consignee" value={consignee?.companyName} />
+                <Row label="Consignor" value={<span className="font-normal text-neutral-400">________________</span>} />
+                <Row label="Balance" value={formatMoney(memo.balance)} money />
+                <Row label="Commission" value={formatMoney(memo.commission)} money />
+                <Row label="Loading Charges" value={formatMoney(memo.loadingCharges)} money />
+                <Row label="Goods Mamul" value={formatMoney(memo.goodsMamuli)} money />
+                <Row label="TDS" value={formatMoney(memo.tds)} money />
+                <Row label="Total Expenses" value={formatMoney(memo.totalExpenses)} money />
+                <Row label="Remarks" value={memo.remarks} last />
               </div>
             </div>
 
-            {/* Financial ledger */}
-            <div className="grid grid-cols-2 border-b-2 border-black">
-              <div className="border-r-2 border-black">
-                <Cell label="Rate / Ton" value={formatMoney(memo.ratePerTon)} />
-                <Cell label="Weight (tons)" value={memo.weightTons} />
-                <Cell label="Net Freight" value={formatMoney(memo.netFreight)} />
-                <Cell label="Advance" value={formatMoney(memo.advance)} />
-                <Cell label="Balance" value={formatMoney(memo.balance)} />
-                <Cell label="Paid At" value={`${memo.paidBy}${memo.paymentMethod ? " · " + memo.paymentMethod : ""}`} />
+            {/* ---------------- FINAL PAYABLE + NOTICE ---------------- */}
+            <div className="avoid-break grid grid-cols-2" style={{ borderBottom: `2px solid ${NAVY}` }}>
+              <div
+                className="flex items-center justify-between px-4 py-[10px]"
+                style={{ background: "#FDECEE", borderRight: `2px solid ${NAVY}` }}
+              >
+                <span style={{ fontSize: "13.5px", fontWeight: 700, letterSpacing: "0.6px", color: NAVY }}>
+                  FINAL PAYABLE
+                </span>
+                <span style={{ fontSize: "21px", fontWeight: 900, color: RED }}>{formatMoney(memo.finalPayable)}</span>
               </div>
-              <div>
-                <Cell label="Balance" value={formatMoney(memo.balance)} />
-                <Cell label="Commission" value={formatMoney(memo.commission)} />
-                <Cell label="Loading Charges" value={formatMoney(memo.loadingCharges)} />
-                <Cell label="Goods Mamuli" value={formatMoney(memo.goodsMamuli)} />
-                <Cell label="TDS" value={formatMoney(memo.tds)} />
-                <Cell label="Total Expenses" value={formatMoney(memo.totalExpenses)} />
-              </div>
-            </div>
-
-            {/* Final payable + Remarks */}
-            <div className="grid grid-cols-2 border-b-2 border-black">
-              <div className="border-r-2 border-black">
-                <Cell label="Final Payable" value={<span className="text-[15px]">{formatMoney(memo.finalPayable)}</span>} />
-              </div>
-              <div>
-                <Cell label="Remarks" value={memo.remarks} />
+              <div className="flex items-center gap-2 px-4 py-[10px]" style={{ background: "#FFF6F6" }}>
+                <AlertTriangle className="h-5 w-5 shrink-0" style={{ color: RED }} />
+                <span style={{ fontSize: "12.5px", fontWeight: 700, color: RED }}>
+                  Goods Receipt should be arrived within 15 days.
+                </span>
               </div>
             </div>
 
-            {/* Notice */}
-            <div className="border-b-2 border-black bg-red-50 px-3 py-2 text-center text-[13px] font-bold text-red-700">
-              Goods Receipt should be arrived within 15 days.
+            {/* ---------------- TERMS ---------------- */}
+            <div className="avoid-break flex-1 px-4 py-2" style={{ minHeight: 0 }}>
+              <div className="mb-1 flex items-center gap-2">
+                <FileText className="h-4 w-4" style={{ color: NAVY }} />
+                <span style={{ fontSize: "14px", fontWeight: 800, letterSpacing: "0.8px", color: NAVY }}>
+                  TERMS &amp; CONDITIONS
+                </span>
+              </div>
+              <div style={{ height: "1px", background: LINE }} className="mb-[6px]" />
+              <ol className="list-decimal pl-5" style={{ fontSize: "11.5px", lineHeight: 1.5 }}>
+                {terms.map((t, i) => (
+                  <li key={i} className="mb-[2px] text-neutral-900">{t}</li>
+                ))}
+              </ol>
             </div>
 
-            {/* Terms — larger, fills remaining space */}
-            <div className="flex-1 px-3 py-2" style={{ minHeight: 0 }}>
-              <div className="mb-1 text-[13px] font-bold uppercase tracking-wider">Terms &amp; Conditions</div>
-              <pre className="whitespace-pre-wrap font-sans text-[16px] leading-[1.45] text-black">{settings?.terms}</pre>
+            {/* ---------------- SIGNATURES ---------------- */}
+            <div className="avoid-break grid grid-cols-3 text-center" style={{ borderTop: `2px solid ${NAVY}` }}>
+              {["Driver Signature", "Office Signature", "Company Stamp"].map((s, i) => (
+                <div key={s} className="px-3 pb-[6px] pt-[52px]" style={i < 2 ? { borderRight: `1px solid ${LINE}` } : undefined}>
+                  <div style={{ borderTop: `1px solid ${NAVY}`, fontSize: "12px", fontWeight: 700, color: NAVY }} className="pt-1">
+                    {s}
+                  </div>
+                </div>
+              ))}
             </div>
 
-            {/* Signatures */}
-            <div className="grid grid-cols-3 border-t-2 border-black text-center text-[12px]">
-              <div className="border-r-2 border-black px-2 pb-2 pt-8">
-                <div className="mt-2 border-t border-black pt-1 font-semibold">Driver Signature</div>
-              </div>
-              <div className="border-r-2 border-black px-2 pb-2 pt-8">
-                <div className="mt-2 border-t border-black pt-1 font-semibold">Office Signature</div>
-              </div>
-              <div className="px-2 pb-2 pt-8">
-                <div className="mt-2 border-t border-black pt-1 font-semibold">Company Stamp</div>
-              </div>
+            {/* ---------------- FOOTER ---------------- */}
+            <div
+              className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 px-3 py-[7px] text-center"
+              style={{ background: NAVY, color: "#fff", fontSize: "10.5px" }}
+            >
+              {settings?.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{settings.phone}</span>}
+              {settings?.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{settings.email}</span>}
+              {settings?.address && <span className="inline-flex items-center gap-1"><MapPin className="h-3 w-3" />{settings.address}</span>}
             </div>
           </div>
         </div>
       </div>
 
       <style>{`
+        .avoid-break { break-inside: avoid; page-break-inside: avoid; }
         @media print {
           body * { visibility: hidden !important; }
           .print-area, .print-area * { visibility: visible !important; }
-          .print-area { position: absolute; inset: 0; box-shadow: none !important; margin: 0 !important; }
-          @page { size: A4 portrait; margin: 0; }
+          .print-area {
+            position: absolute; inset: 0;
+            box-shadow: none !important; margin: 0 !important;
+            width: 194mm !important; height: 281mm !important;
+            padding: 0 !important; border-radius: 0 !important;
+            overflow: hidden;
+          }
+          .print-area .rounded-md { border-radius: 0 !important; }
+          @page { size: A4 portrait; margin: 8mm; }
         }
       `}</style>
     </AppShell>
   );
 }
+
