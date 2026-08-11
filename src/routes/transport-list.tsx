@@ -205,8 +205,9 @@ function TransportListPage() {
             not permitted to read them (row-level security) — no filter on this page is excluding them.
           </div>
         )}
-
+        <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+
           <Input
             value={query}
             onChange={(e) => { setQuery(e.target.value); setPage(1); }}
