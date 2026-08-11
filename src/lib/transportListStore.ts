@@ -187,8 +187,13 @@ initRealtime();
 // -------------------------- QUERIES ------------------------------------------
 
 export async function getTransportEntries(opts?: { includeDeleted?: boolean }): Promise<TransportEntry[]> {
-  let q = supabase.from("transport_list").select("*").order("dispatch_date", { ascending: false });
-  if (!opts?.includeDeleted) q = q.eq("is_deleted", false);
+  let q = supabase
+    .from("transport_list")
+    .select("*")
+    .order("dispatch_date", { ascending: false, nullsFirst: false });
+  // Rows inserted outside the app may have is_deleted = NULL; `.eq(false)` would
+  // silently hide them, so treat NULL as "not deleted".
+  if (!opts?.includeDeleted) q = q.or("is_deleted.is.null,is_deleted.eq.false");
   const { data, error } = await q;
   if (error) throw error;
   return (data ?? []).map(rowToEntry);
