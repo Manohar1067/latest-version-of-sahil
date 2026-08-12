@@ -4,7 +4,7 @@ import { useStoreData } from "@/lib/useStore";
 import { getMemo, getTruck, getConsignee, getSettings, type Memo, type FleetTruck, type Consignee, type Settings } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Printer, Download, ArrowLeft, Pencil, ChevronDown, AlertTriangle, FileText, Phone, Mail, MapPin } from "lucide-react";
+import { Printer, Download, ArrowLeft, Pencil, ChevronDown, AlertTriangle, FileText, Phone, Mail, MapPin, Share2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
@@ -25,7 +25,7 @@ function SectionHead({ children }: { children: React.ReactNode }) {
   return (
     <div
       className="px-3 py-[6px]"
-      style={{ background: NAVY, color: "#fff", fontSize: "13.5px", fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase" }}
+      style={{ background: NAVY, color: "#fff", fontSize: "15px", fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase" }}
     >
       {children}
     </div>
@@ -38,14 +38,14 @@ function Row({ label, value, money, last }: { label: string; value: React.ReactN
   return (
     <div className="flex" style={{ borderBottom: last ? "none" : `1px solid ${LINE}` }}>
       <div
-        className="w-[44%] shrink-0 px-3 py-[6px]"
-        style={{ background: "#F5F6FA", borderRight: `1px solid ${LINE}`, fontSize: "11.5px", color: "#3A4356" }}
+        className="w-[44%] shrink-0 px-3 py-[7px]"
+        style={{ background: "#F5F6FA", borderRight: `1px solid ${LINE}`, fontSize: "13.5px", color: "#3A4356" }}
       >
         {label}
       </div>
       <div
-        className="flex-1 px-3 py-[6px]"
-        style={{ fontSize: money ? "13.5px" : "13px", fontWeight: 700, color: money ? NAVY : "#111" }}
+        className="flex-1 px-3 py-[7px]"
+        style={{ fontSize: money ? "15px" : "14.5px", fontWeight: 700, color: money ? NAVY : "#111" }}
       >
         {empty ? "—" : value}
       </div>
@@ -148,7 +148,38 @@ function MemoView() {
     toast.success(fmt === "pdf" ? "PDF downloaded" : "Image downloaded");
   };
 
-  // WhatsApp / Email sharing intentionally removed for now — Print & Download only.
+  const shareText = () =>
+    `${settings?.companyName ?? "Sahil Road Lines"}\nMemo ${memo?.memoNumber}\nDate: ${formatDate(memo?.dispatchDate ?? "")}\nTruck: ${truck?.truckNumber ?? "—"}\nMaterial: ${memo?.materialName ?? "—"}\nFinal Payable: ${formatMoney(memo?.finalPayable ?? 0)}`;
+
+  const shareWhatsApp = async () => {
+    if (!memo) return;
+    const blob = await withReceipt("Preparing receipt…", (el) => buildPdfBlob(el));
+    if (!blob) return;
+    const file = new File([blob], `${memo.memoNumber}.pdf`, { type: "application/pdf" });
+    const nav2 = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+    if (nav2.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: memo.memoNumber, text: shareText() });
+        return;
+      } catch {
+        /* user cancelled or unsupported — fall through to wa.me */
+      }
+    }
+    // Fallback: download the PDF and open WhatsApp with the summary text to attach.
+    saveBlob(blob, `${memo.memoNumber}.pdf`);
+    window.open(`https://wa.me/?text=${encodeURIComponent(shareText())}`, "_blank");
+    toast.success("PDF downloaded — attach it in WhatsApp");
+  };
+
+  const shareEmail = async () => {
+    if (!memo) return;
+    const blob = await withReceipt("Preparing receipt…", (el) => buildPdfBlob(el));
+    if (!blob) return;
+    saveBlob(blob, `${memo.memoNumber}.pdf`);
+    const subject = `Goods Receipt ${memo.memoNumber}`;
+    window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(shareText())}`;
+    toast.success("PDF downloaded — attach it to the email");
+  };
 
 
   if (!memo) return <AppShell title="Memo"><div className="card-surface p-8 text-center">Loading…</div></AppShell>;
@@ -168,6 +199,15 @@ function MemoView() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => download("pdf")}>PDF (.pdf)</DropdownMenuItem>
               <DropdownMenuItem onClick={() => download("png")}>Image (.png)</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline"><Share2 className="mr-1 h-4 w-4" />Share<ChevronDown className="ml-1 h-4 w-4" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={shareWhatsApp}>WhatsApp</DropdownMenuItem>
+              <DropdownMenuItem onClick={shareEmail}>Email</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <Button onClick={() => window.print()}><Printer className="mr-1 h-4 w-4" />Print</Button>
@@ -195,28 +235,28 @@ function MemoView() {
           >
             {/* ---------------- HEADER ---------------- */}
             <div className="avoid-break flex items-stretch" style={{ borderBottom: `2px solid ${NAVY}` }}>
-              <div className="flex flex-1 items-center gap-4 px-4 py-3">
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-3 text-center">
                 {settings?.logoUrl ? (
-                  <img src={settings.logoUrl} className="h-[86px] w-[86px] shrink-0 object-contain" alt="Company logo" />
+                  <img src={settings.logoUrl} className="h-[104px] w-auto max-w-[220px] shrink-0 object-contain" alt="Company logo" />
                 ) : (
                   <div className="flex h-[78px] w-[78px] shrink-0 rotate-45 items-center justify-center" style={{ background: NAVY }}>
                     <div className="h-7 w-7 rotate-45 bg-white" />
                   </div>
                 )}
                 <div>
-                  <div style={{ fontSize: "24px", fontWeight: 800, letterSpacing: "-0.3px", color: NAVY, lineHeight: 1.1 }}>
+                  <div style={{ fontSize: "30px", fontWeight: 800, letterSpacing: "-0.3px", color: NAVY, lineHeight: 1.1 }}>
                     {settings?.companyName ?? "SAHIL ROAD LINES"}
                   </div>
-                  <div style={{ fontSize: "12.5px", fontWeight: 600, color: RED }}>
+                  <div style={{ fontSize: "15px", fontWeight: 600, color: RED }}>
                     Transport Contractor &amp; Commission Agents
                   </div>
-                  <div style={{ fontSize: "11.5px", lineHeight: 1.45 }} className="mt-1 text-neutral-800">
+                  <div style={{ fontSize: "13.5px", lineHeight: 1.45 }} className="mt-1 text-neutral-800">
                     {settings?.address}
                   </div>
-                  <div style={{ fontSize: "11.5px" }} className="text-neutral-800">
+                  <div style={{ fontSize: "13.5px" }} className="text-neutral-800">
                     Ph: {settings?.phone ?? "—"}{settings?.gst ? `  ·  GST: ${settings.gst}` : ""}
                   </div>
-                  <div style={{ fontSize: "11.5px", fontWeight: 700, color: NAVY }}>
+                  <div style={{ fontSize: "13.5px", fontWeight: 700, color: NAVY }}>
                     {settings?.jurisdictionText ?? "Subject to Visakhapatnam Jurisdiction"}
                   </div>
                 </div>
@@ -228,11 +268,11 @@ function MemoView() {
                 >
                   GOODS RECEIPT
                 </div>
-                <div className="flex justify-between" style={{ fontSize: "11.5px" }}>
+                <div className="flex justify-between" style={{ fontSize: "13px" }}>
                   <span className="text-neutral-600">Memo No.</span>
-                  <span style={{ fontSize: "14px", fontWeight: 800, color: NAVY }}>{memo.memoNumber}</span>
+                  <span style={{ fontSize: "16px", fontWeight: 800, color: NAVY }}>{memo.memoNumber}</span>
                 </div>
-                <div className="mt-1 flex justify-between" style={{ fontSize: "11.5px" }}>
+                <div className="mt-1 flex justify-between" style={{ fontSize: "13px" }}>
                   <span className="text-neutral-600">Date</span>
                   <span style={{ fontSize: "13px", fontWeight: 700 }}>{formatDate(memo.dispatchDate)}</span>
                 </div>
@@ -277,29 +317,29 @@ function MemoView() {
                 className="flex items-center justify-between px-4 py-[10px]"
                 style={{ background: "#FDECEE", borderRight: `2px solid ${NAVY}` }}
               >
-                <span style={{ fontSize: "13.5px", fontWeight: 700, letterSpacing: "0.6px", color: NAVY }}>
+                <span style={{ fontSize: "15px", fontWeight: 700, letterSpacing: "0.6px", color: NAVY }}>
                   FINAL PAYABLE
                 </span>
-                <span style={{ fontSize: "21px", fontWeight: 900, color: RED }}>{formatMoney(memo.finalPayable)}</span>
+                <span style={{ fontSize: "23px", fontWeight: 900, color: RED }}>{formatMoney(memo.finalPayable)}</span>
               </div>
               <div className="flex items-center gap-2 px-4 py-[10px]" style={{ background: "#FFF6F6" }}>
                 <AlertTriangle className="h-5 w-5 shrink-0" style={{ color: RED }} />
-                <span style={{ fontSize: "12.5px", fontWeight: 700, color: RED }}>
+                <span style={{ fontSize: "14px", fontWeight: 700, color: RED }}>
                   Goods Receipt should be arrived within 15 days.
                 </span>
               </div>
             </div>
 
             {/* ---------------- TERMS ---------------- */}
-            <div className="avoid-break flex-1 px-4 py-2" style={{ minHeight: 0 }}>
+            <div className="avoid-break flex flex-1 flex-col justify-end px-4 py-3" style={{ minHeight: 0 }}>
               <div className="mb-1 flex items-center gap-2">
                 <FileText className="h-4 w-4" style={{ color: NAVY }} />
-                <span style={{ fontSize: "14px", fontWeight: 800, letterSpacing: "0.8px", color: NAVY }}>
+                <span style={{ fontSize: "16px", fontWeight: 800, letterSpacing: "0.8px", color: NAVY }}>
                   TERMS &amp; CONDITIONS
                 </span>
               </div>
               <div style={{ height: "1px", background: LINE }} className="mb-[6px]" />
-              <ol className="list-decimal pl-5" style={{ fontSize: "11.5px", lineHeight: 1.5 }}>
+              <ol className="list-decimal pl-5" style={{ fontSize: "13.5px", lineHeight: 1.55 }}>
                 {terms.map((t, i) => (
                   <li key={i} className="mb-[2px] text-neutral-900">{t}</li>
                 ))}
@@ -310,7 +350,7 @@ function MemoView() {
             <div className="avoid-break grid grid-cols-3 text-center" style={{ borderTop: `2px solid ${NAVY}` }}>
               {["Driver Signature", "Office Signature", "Company Stamp"].map((s, i) => (
                 <div key={s} className="px-3 pb-[6px] pt-[52px]" style={i < 2 ? { borderRight: `1px solid ${LINE}` } : undefined}>
-                  <div style={{ borderTop: `1px solid ${NAVY}`, fontSize: "12px", fontWeight: 700, color: NAVY }} className="pt-1">
+                  <div style={{ borderTop: `1px solid ${NAVY}`, fontSize: "13.5px", fontWeight: 700, color: NAVY }} className="pt-1">
                     {s}
                   </div>
                 </div>
@@ -320,7 +360,7 @@ function MemoView() {
             {/* ---------------- FOOTER ---------------- */}
             <div
               className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 px-3 py-[7px] text-center"
-              style={{ background: NAVY, color: "#fff", fontSize: "10.5px" }}
+              style={{ background: NAVY, color: "#fff", fontSize: "12px" }}
             >
               {settings?.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{settings.phone}</span>}
               {settings?.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{settings.email}</span>}
