@@ -67,15 +67,20 @@ function TransportEditPage() {
     setDirty(true);
   };
 
-  /** Only triggered when the user actively edits Weight or Rate/Ton. */
-  const setAndRecalc = (k: "weightTons" | "ratePerTon", v: number) => {
+  /** Only triggered when the user actively edits an amount field — never on load. */
+  type NumKey = "weightTons" | "ratePerTon" | "advance" | "commission" | "loadingCharges" | "tds" | "goodsMamuli" | "haltingCharge";
+  const setAndRecalc = (k: NumKey, v: number) => {
     setForm((f) => {
       if (!f) return f;
       const next = { ...f, [k]: v };
       const netFreight = Math.round((next.weightTons || 0) * (next.ratePerTon || 0));
       const balance = netFreight - (next.advance || 0);
-      const finalPayable = balance - (next.totalExpenses || 0);
-      return { ...next, netFreight, balance, finalPayable };
+      // Halting charge is part of a transport entry's expenses.
+      const totalExpenses =
+        (next.commission || 0) + (next.loadingCharges || 0) + (next.tds || 0) +
+        (next.goodsMamuli || 0) + (next.haltingCharge || 0);
+      const finalPayable = balance - totalExpenses;
+      return { ...next, netFreight, balance, totalExpenses, finalPayable };
     });
     setDirty(true);
   };
@@ -173,7 +178,7 @@ function TransportEditPage() {
             <Input className="h-11" type="number" value={form.ratePerTon ?? 0} onChange={(e) => setAndRecalc("ratePerTon", Number(e.target.value))} />
           </Field>
           <Field label="Unloading Date"><Input className="h-11" type="date" value={toInputDate(form.unloadingDate)} onChange={(e) => set("unloadingDate", fromInputDate(e.target.value))} /></Field>
-          <Field label="Halting Charge (₹)"><Input className="h-11" type="number" value={form.haltingCharge ?? 0} onChange={(e) => set("haltingCharge", Number(e.target.value))} /></Field>
+          <Field label="Halting Charge (₹)"><Input className="h-11" type="number" value={form.haltingCharge ?? 0} onChange={(e) => setAndRecalc("haltingCharge", Number(e.target.value))} /></Field>
           <Field label="LR Received Date"><Input className="h-11" type="date" value={toInputDate(form.lrReceivedDate)} onChange={(e) => set("lrReceivedDate", fromInputDate(e.target.value))} /></Field>
           <Field label="LR Submitted Date"><Input className="h-11" type="date" value={toInputDate(form.lrSubmittedDate)} onChange={(e) => set("lrSubmittedDate", fromInputDate(e.target.value))} /></Field>
           <div className="md:col-span-2 lg:col-span-3">
@@ -183,12 +188,12 @@ function TransportEditPage() {
 
         <Section title="Payment Information">
           <Field label="Net Freight (₹)"><Input className="h-11" type="number" value={form.netFreight ?? 0} onChange={(e) => set("netFreight", Number(e.target.value))} /></Field>
-          <Field label="Advance (₹)"><Input className="h-11" type="number" value={form.advance ?? 0} onChange={(e) => set("advance", Number(e.target.value))} /></Field>
+          <Field label="Advance (₹)"><Input className="h-11" type="number" value={form.advance ?? 0} onChange={(e) => setAndRecalc("advance", Number(e.target.value))} /></Field>
           <Field label="Balance (₹)"><Input className="h-11" type="number" value={form.balance ?? 0} onChange={(e) => set("balance", Number(e.target.value))} /></Field>
-          <Field label="Commission (₹)"><Input className="h-11" type="number" value={form.commission ?? 0} onChange={(e) => set("commission", Number(e.target.value))} /></Field>
-          <Field label="Loading Charges (₹)"><Input className="h-11" type="number" value={form.loadingCharges ?? 0} onChange={(e) => set("loadingCharges", Number(e.target.value))} /></Field>
-          <Field label="TDS (₹)"><Input className="h-11" type="number" value={form.tds ?? 0} onChange={(e) => set("tds", Number(e.target.value))} /></Field>
-          <Field label="Goods Mamuli (₹)"><Input className="h-11" type="number" value={form.goodsMamuli ?? 0} onChange={(e) => set("goodsMamuli", Number(e.target.value))} /></Field>
+          <Field label="Commission (₹)"><Input className="h-11" type="number" value={form.commission ?? 0} onChange={(e) => setAndRecalc("commission", Number(e.target.value))} /></Field>
+          <Field label="Loading Charges (₹)"><Input className="h-11" type="number" value={form.loadingCharges ?? 0} onChange={(e) => setAndRecalc("loadingCharges", Number(e.target.value))} /></Field>
+          <Field label="TDS (₹)"><Input className="h-11" type="number" value={form.tds ?? 0} onChange={(e) => setAndRecalc("tds", Number(e.target.value))} /></Field>
+          <Field label="Goods Mamuli (₹)"><Input className="h-11" type="number" value={form.goodsMamuli ?? 0} onChange={(e) => setAndRecalc("goodsMamuli", Number(e.target.value))} /></Field>
           <Field label="Total Expenses (₹)"><Input className="h-11" type="number" value={form.totalExpenses ?? 0} onChange={(e) => set("totalExpenses", Number(e.target.value))} /></Field>
           <Field label="Paid By">
             <Select value={form.paidBy} onValueChange={(v) => set("paidBy", v)}>
