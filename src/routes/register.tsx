@@ -120,7 +120,11 @@ function RegisterPage() {
       const sel = colFilters[k];
       if (sel) rows = rows.filter((r) => sel.has(colValue(r, k)));
     });
-    return rows.sort((a, b) => +new Date(b.dispatchDate) - +new Date(a.dispatchDate));
+    return rows.sort(
+      (a, b) =>
+        +new Date(b.dispatchDate) - +new Date(a.dispatchDate) ||
+        +new Date(b.createdAt ?? 0) - +new Date(a.createdAt ?? 0),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rowsPre, colFilters, trucks, consignees]);
 
@@ -301,7 +305,7 @@ function RegisterPage() {
           // Column definitions — single source of truth for header, filter, and cell.
           type Col = { key: ColKey; label: string; align?: "left" | "right"; render: (r: Memo) => React.ReactNode };
           const cols: Col[] = [
-            { key: "memoNumber", label: "Memo #", render: (r) => <Link to="/memo/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.memoNumber}</Link> },
+            { key: "memoNumber", label: "Memo #", render: (r) => <span className="inline-flex items-center"><Link to="/memo/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.memoNumber}</Link>{r.isDraft && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Draft</span>}</span> },
             { key: "dispatch", label: "Dispatch", render: (r) => <span className="whitespace-nowrap">{formatDate(r.dispatchDate)}</span> },
             { key: "truck", label: "Truck", render: (r) => <span className="font-semibold whitespace-nowrap">{truckById(r.truckId)?.truckNumber ?? "—"}</span> },
             { key: "transport", label: "Transport", render: (r) => r.transportName },
