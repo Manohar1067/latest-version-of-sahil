@@ -96,6 +96,7 @@ export interface Memo {
   internalNotes?: string;
   status: MemoStatus;
   remarks?: string;
+  isDraft?: boolean;
   isDeleted: boolean;
   deletedAt?: string;
   createdAt: string;
@@ -114,7 +115,7 @@ export interface AuditLogEntry {
   id: string;
   actor: string;
   action: string;
-  entityType: "Memo" | "Truck" | "Consignee" | "Settings";
+  entityType: string;
   entityId: string;
   oldValue?: unknown;
   newValue?: unknown;
@@ -233,6 +234,7 @@ const MEMO_FIELD_MAP: Record<string, string> = {
   internalNotes: "internal_notes",
   status: "status",
   remarks: "remarks",
+  isDraft: "is_draft",
   isDeleted: "is_deleted",
   deletedAt: "deleted_at",
 };
@@ -274,6 +276,7 @@ function rowToMemo(r: any): Memo {
     internalNotes: r.internal_notes ?? undefined,
     status: r.status as MemoStatus,
     remarks: r.remarks ?? undefined,
+    isDraft: !!r.is_draft,
     isDeleted: r.is_deleted,
     deletedAt: r.deleted_at ?? undefined,
     createdAt: r.created_at,
@@ -537,7 +540,7 @@ export async function permanentlyDeleteConsignee(id: string): Promise<void> {
 // -------------------------- UNIFIED TRASH (memos + trucks + consignees) -----
 
 export interface TrashItem {
-  kind: "Memo" | "Truck" | "Consignee";
+  kind: "Memo" | "Truck" | "Consignee" | "Transport";
   id: string;
   label: string;       // display text — memo number / truck number / company name
   deletedAt?: string;
