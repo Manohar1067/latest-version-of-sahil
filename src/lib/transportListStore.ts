@@ -257,3 +257,73 @@ export async function restoreTransportEntry(id: string): Promise<void> {
   if (error) throw error;
   emit();
 }
+
+export async function permanentlyDeleteTransportEntry(id: string): Promise<void> {
+  const { error } = await supabase.from("transport_list").delete().eq("id", id);
+  if (error) throw error;
+  emit();
+}
+
+/** Ensures a transport_list row exists for a finalized memo. Never overwrites an existing one. */
+export async function ensureTransportEntryForMemo(memo: Record<string, any>): Promise<void> {
+  const entryNumber = memo.memoNumber;
+  if (!entryNumber) return;
+  const { data: existing } = await supabase
+    .from("transport_list")
+    .select("id")
+    .eq("entry_number", entryNumber)
+    .maybeSingle();
+  if (existing) return;
+  const input: Partial<TransportEntryInput> = {
+    dispatchDate: memo.dispatchDate,
+    fromLocation: memo.fromLocation,
+    toLocation: memo.toLocation,
+    transportName: memo.transportName,
+    truckNumber: memo.truckNumber,
+    driverName: memo.driverName,
+    ownerName: memo.ownerName,
+    ownerPhone: memo.ownerPhone,
+    consigneeName: memo.consigneeName,
+    materialName: memo.materialName,
+    weightTons: memo.weightTons,
+    ratePerTon: memo.ratePerTon,
+    netFreight: memo.netFreight,
+    advance: memo.advance,
+    balance: memo.balance,
+    unloadingDate: memo.unloadingDate,
+    haltingCharge: 0,
+    lrReceivedDate: memo.lrReceivedDate,
+    lrSubmittedDate: memo.lrSubmittedDate,
+    description: memo.description,
+    commission: memo.commission,
+    loadingCharges: memo.loadingCharges,
+    tds: memo.tds,
+    goodsMamuli: memo.goodsMamuli,
+    totalExpenses: memo.totalExpenses,
+    paidBy: memo.paidBy,
+    paymentMethod: memo.paymentMethod,
+    finalPayable: memo.finalPayable,
+    finalPaymentDate: memo.finalPaymentDate,
+    status: memo.status,
+    remarks: memo.remarks,
+  };
+  const { error } = await supabase
+    .from("transport_list")
+    .insert({ ...entryToRow(input), entry_number: entryNumber, is_deleted: false });
+  if (error) {
+    // Non-fatal: the DB may already create this row via trigger.
+    console.warn("[transport_list] could not mirror memo", error.message);
+    return;
+  }
+  emit();
+}
+
+export async function getTrashedTransportEntries(): Promise<TransportEntry[]> {
+  const { data, error } = await supabase
+    .from("transport_list")
+    .select("*")
+    .eq("is_deleted", true)
+    .order("deleted_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(rowToEntry);
+}

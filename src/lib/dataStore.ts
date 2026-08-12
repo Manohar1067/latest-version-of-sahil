@@ -12,6 +12,11 @@
  */
 
 import { supabase } from "./supabaseClient";
+import {
+  getTrashedTransportEntries,
+  restoreTransportEntry,
+  permanentlyDeleteTransportEntry,
+} from "./transportListStore";
 
 // -----------------------------  TYPES  --------------------------------------
 // (unchanged from the original file)
@@ -547,10 +552,11 @@ export interface TrashItem {
 }
 
 export async function getAllTrashItems(): Promise<TrashItem[]> {
-  const [memos, trucks, consignees] = await Promise.all([
+  const [memos, trucks, consignees, transport] = await Promise.all([
     getTrashedMemos(),
     supabase.from("fleet_trucks").select("*").eq("is_deleted", true),
     supabase.from("consignees").select("*").eq("is_deleted", true),
+    getTrashedTransportEntries().catch(() => []),
   ]);
   const truckItems: TrashItem[] = (trucks.data ?? []).map((r: any) => ({
     kind: "Truck",
@@ -570,7 +576,13 @@ export async function getAllTrashItems(): Promise<TrashItem[]> {
     label: m.memoNumber,
     deletedAt: m.deletedAt,
   }));
-  return [...memoItems, ...truckItems, ...consigneeItems].sort((a, b) =>
+  const transportItems: TrashItem[] = transport.map((t) => ({
+    kind: "Transport",
+    id: t.id,
+    label: t.entryNumber,
+    deletedAt: t.deletedAt,
+  }));
+  return [...memoItems, ...truckItems, ...consigneeItems, ...transportItems].sort((a, b) =>
     (b.deletedAt ?? "").localeCompare(a.deletedAt ?? ""),
   );
 }
@@ -579,12 +591,14 @@ export async function restoreTrashItem(item: TrashItem): Promise<void> {
   if (item.kind === "Memo") return restoreMemo(item.id);
   if (item.kind === "Truck") return restoreTruck(item.id);
   if (item.kind === "Consignee") return restoreConsignee(item.id);
+  if (item.kind === "Transport") return restoreTransportEntry(item.id);
 }
 
 export async function permanentlyDeleteTrashItem(item: TrashItem): Promise<void> {
   if (item.kind === "Memo") return permanentlyDeleteMemo(item.id);
   if (item.kind === "Truck") return permanentlyDeleteTruck(item.id);
   if (item.kind === "Consignee") return permanentlyDeleteConsignee(item.id);
+  if (item.kind === "Transport") return permanentlyDeleteTransportEntry(item.id);
 }
 
 // -------------------------- MEMOS -------------------------------------------
