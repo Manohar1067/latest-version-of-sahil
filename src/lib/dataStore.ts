@@ -283,12 +283,24 @@ function rowToMemo(r: any): Memo {
 
 function memoToRow(m: Partial<MemoInput>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
+
   for (const [key, col] of Object.entries(MEMO_FIELD_MAP)) {
     const val = (m as Record<string, unknown>)[key];
+
     if (val !== undefined) {
-      row[col] = val === "" && col.endsWith("_date") ? null : val;
+      if (
+        val === "" &&
+        (col.endsWith("_date") ||
+          col === "consignee_id" ||
+          col === "truck_id")
+      ) {
+        row[col] = null;
+      } else {
+        row[col] = val;
+      }
     }
   }
+
   return row;
 }
 
