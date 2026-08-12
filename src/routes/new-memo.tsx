@@ -15,6 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Combobox } from "@/components/Combobox";
 import { toInputDate, fromInputDate } from "@/lib/format";
 import { toast } from "sonner";
+import { ensureTransportEntryForMemo } from "@/lib/transportListStore";
+
+/** localStorage key holding the in-progress (unsaved) New Memo form. */
+const DRAFT_CACHE_KEY = "srl:new-memo:in-progress";
 
 const CREATE_STATUSES: MemoStatus[] = ["Dispatched", "Delivered", "Payment Pending", "LR Received", "LR Submitted", "Completed"];
 
@@ -87,6 +91,19 @@ function NewMemo() {
 
   useEffect(() => {
     peekNextMemoNumber().then(setNextNum);
+    if (!edit) {
+      // Restore any in-progress form the user left behind.
+      try {
+        const cached = localStorage.getItem(DRAFT_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached) as MemoInput;
+          setForm({ ...emptyForm(), ...parsed });
+          toast.info("Restored your unsaved memo");
+        }
+      } catch {
+        localStorage.removeItem(DRAFT_CACHE_KEY);
+      }
+    }
     if (edit) {
       getMemo(edit).then((m) => {
         if (m) {
@@ -109,6 +126,14 @@ function NewMemo() {
       return { ...f, netFreight, balance, totalExpenses, finalPayable };
     });
   }, [form.weightTons, form.ratePerTon, form.advance, form.commission, form.loadingCharges, form.goodsMamuli, form.tds, freightOverride]);
+
+  // Continuously cache the in-progress form (new memos only).
+  useEffect(() => {
+    if (edit || !dirty) return;
+    try {
+      localStorage.setItem(DRAFT_CACHE_KEY, JSON.stringify(form));
+    } catch { /* quota — ignore */ }
+  }, [form, dirty, edit]);
 
   // warn on unload
   useEffect(() => {
@@ -135,17 +160,22 @@ function NewMemo() {
     if (!form.ratePerTon) return toast.error("Rate/Ton is required");
     if (!form.dispatchDate) return toast.error("Dispatch date is required");
     try {
-      const payload = { ...form, status: draft ? ("Dispatched" as MemoStatus) : form.status };
+      const payload = { ...form, isDraft: draft };
       if (edit) {
-        await updateMemo(edit, payload);
-        toast.success("Memo updated");
+        const updated = await updateMemo(edit, payload);
+        localStorage.removeItem(DRAFT_CACHE_KEY);
+        toast.success(draft ? "Draft saved" : "Memo updated");
         setDirty(false);
-        nav({ to: "/memo/$id", params: { id: edit } });
+        if (!draft) await ensureTransportEntryForMemo(updated);
+        nav({ to: draft ? "/register" : "/memo/$id", params: { id: edit } as never });
       } else {
         const created = await createMemo(payload);
-        toast.success(`Memo ${created.memoNumber} created`);
+        localStorage.removeItem(DRAFT_CACHE_KEY);
+        toast.success(draft ? `Draft ${created.memoNumber} saved` : `Memo ${created.memoNumber} created`);
         setDirty(false);
-        nav({ to: "/memo/$id", params: { id: created.id } });
+        if (!draft) await ensureTransportEntryForMemo(created);
+        if (draft) nav({ to: "/register" });
+        else nav({ to: "/memo/$id", params: { id: created.id } });
       }
     } catch (e) {
       toast.error((e as Error).message);

@@ -15,7 +15,7 @@ import {
 
 export const Route = createFileRoute("/trash")({ component: TrashPage });
 
-const KINDS = ["All", "Memo", "Truck", "Consignee"] as const;
+const KINDS = ["All", "Memo", "Transport", "Truck", "Consignee"] as const;
 
 function TrashPage() {
   const { data, refresh } = useStoreData<TrashItem[]>(() => getAllTrashItems(), []);
@@ -47,7 +47,7 @@ function TrashPage() {
           <TabsList>
             {KINDS.map((k) => (
               <TabsTrigger key={k} value={k}>
-                {k === "All" ? "All" : `${k}s`}
+                {k === "All" ? "All" : k === "Transport" ? "Transport Entries" : `${k}s`}
                 <span className="ml-2 text-xs text-muted-foreground">
                   {k === "All" ? all.length : all.filter((r) => r.kind === k).length}
                 </span>
