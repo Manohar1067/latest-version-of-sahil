@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
-import { useStoreData } from "@/lib/useStore";
 import { getAuditLog, type AuditLogEntry } from "@/lib/dataStore";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
-import { Search, Eye } from "lucide-react";
+import { Search, Eye, Loader2, RefreshCw } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -63,9 +62,23 @@ function computeDiff(oldVal: unknown, newVal: unknown): Array<{ label: string; b
 }
 
 function AuditPage() {
-  const { data } = useStoreData<AuditLogEntry[]>(() => getAuditLog(), []);
+  const [data, setData] = useState<AuditLogEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [q, setQ] = useState("");
   const [viewing, setViewing] = useState<AuditLogEntry | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(false);
+    getAuditLog()
+      .then((d) => { if (alive) { setData(d); setLoading(false); } })
+      .catch(() => { if (alive) { setError(true); setLoading(false); } });
+    return () => { alive = false; };
+  }, [reloadKey]);
+
   const rows = useMemo(() => (data ?? []).filter((r) =>
     [r.actor, r.action, r.entityType, r.entityId].join(" ").toLowerCase().includes(q.toLowerCase())
   ), [data, q]);
@@ -75,8 +88,33 @@ function AuditPage() {
       <div className="card-surface p-5">
         <div className="relative mb-4 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search actions…" className="h-11 pl-9" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search actions…" className="h-11 pl-9" disabled={loading || error} />
         </div>
+
+        {loading && (
+          <div>
+            <div className="flex items-center justify-center gap-3 py-6 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-base font-medium">Loading audit logs…</span>
+            </div>
+            <div className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-11 w-full animate-pulse rounded-md bg-muted" />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="py-12 text-center">
+            <p className="mb-4 text-muted-foreground">Unable to load audit logs. Please try again.</p>
+            <Button variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
+              <RefreshCw className="mr-1 h-4 w-4" />Retry
+            </Button>
+          </div>
+        )}
+
+        {!loading && !error && (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px] text-left">
             <thead className="border-b bg-muted/40 text-xs uppercase text-muted-foreground">
@@ -87,7 +125,8 @@ function AuditPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (<tr><td colSpan={6} className="py-12 text-center text-muted-foreground">No records found</td></tr>)}
+              {rows.length === 0 && (<tr><td colSpan={6} className="py-12 text-center text-muted-foreground">No audit activity found.</td></tr>)}
+
               {rows.map((r) => {
                 const changes = computeDiff(r.oldValue, r.newValue);
                 return (
@@ -113,7 +152,9 @@ function AuditPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
+
 
       <Dialog open={!!viewing} onOpenChange={(o) => !o && setViewing(null)}>
         <DialogContent className="max-w-2xl">
