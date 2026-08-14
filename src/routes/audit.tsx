@@ -153,7 +153,9 @@ function AuditPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
+
 
       <Dialog open={!!viewing} onOpenChange={(o) => !o && setViewing(null)}>
         <DialogContent className="max-w-2xl">
