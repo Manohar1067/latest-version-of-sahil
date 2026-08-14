@@ -1,12 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
-import { useStoreData } from "@/lib/useStore";
 import { getAuditLog, type AuditLogEntry } from "@/lib/dataStore";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
-import { Search, Eye } from "lucide-react";
+import { Search, Eye, Loader2, RefreshCw } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
