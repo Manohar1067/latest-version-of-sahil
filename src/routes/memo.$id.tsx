@@ -53,6 +53,29 @@ function Row({ label, value, money, last }: { label: string; value: React.ReactN
   );
 }
 
+/** Indian-system number to words, display-only (does not alter any calculation). */
+const ONES = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+function twoDigits(n: number): string {
+  if (n < 20) return ONES[n];
+  return (TENS[Math.floor(n / 10)] + (n % 10 ? " " + ONES[n % 10] : "")).trim();
+}
+function amountInWords(value: number | null | undefined): string {
+  let n = Math.round(Number(value ?? 0));
+  if (!isFinite(n) || n <= 0) return "Zero";
+  const parts: string[] = [];
+  const units: Array<[number, string]> = [[10000000, "Crore"], [100000, "Lakh"], [1000, "Thousand"], [100, "Hundred"]];
+  for (const [div, name] of units) {
+    const q = Math.floor(n / div);
+    if (q > 0) {
+      parts.push(`${div >= 1000 ? amountInWords(q) : twoDigits(q)} ${name}`);
+      n %= div;
+    }
+  }
+  if (n > 0) parts.push(twoDigits(n));
+  return parts.join(" ").trim();
+}
+
 
 async function renderCanvas(el: HTMLElement) {
   // html2canvas-pro supports modern CSS colors (oklch) used by Tailwind v4;
