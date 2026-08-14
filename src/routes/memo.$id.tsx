@@ -4,7 +4,7 @@ import { useStoreData } from "@/lib/useStore";
 import { getMemo, getTruck, getConsignee, getSettings, type Memo, type FleetTruck, type Consignee, type Settings } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Printer, Download, ArrowLeft, Pencil, ChevronDown, AlertTriangle, FileText, Phone, Mail, MapPin, Share2 } from "lucide-react";
+import { Printer, Download, ArrowLeft, Pencil, ChevronDown, AlertTriangle, FileText, Phone, Mail, MapPin, Share2, IndianRupee, Weight, Truck, Wallet, Coins, Percent, PackagePlus, Receipt, Banknote, Calculator, User, CreditCard } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
