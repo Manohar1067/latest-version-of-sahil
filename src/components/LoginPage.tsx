@@ -1,17 +1,18 @@
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/lib/AuthContext";
 import { useCompanyLogo } from "@/lib/useCompanyLogo";
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const logoUrl = useCompanyLogo();
   const [email, setEmail] = useState("");
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showForgot, setShowForgot] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -80,7 +81,7 @@ export default function LoginPage() {
         <div className="text-right mb-4">
           <button
             type="button"
-            onClick={() => setShowForgot(true)}
+            onClick={() => navigate({ to: "/forgot-pin" })}
             className="text-xs text-[#0B2A55] hover:underline"
           >
             Forgot PIN?
@@ -97,31 +98,6 @@ export default function LoginPage() {
           {submitting ? "Checking..." : "Login"}
         </button>
       </form>
-
-      {showForgot && (
-        <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
-          onClick={() => setShowForgot(false)}
-        >
-          <div
-            className="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-base font-semibold text-[#0B2A55] mb-2">Forgot your PIN?</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              For security, PINs can't be reset from this screen. Please contact your
-              office's Super Admin — they can reset your PIN directly from User Management.
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowForgot(false)}
-              className="w-full bg-[#0B2A55] text-white rounded-md py-2.5 text-sm font-medium"
-            >
-              Got it
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

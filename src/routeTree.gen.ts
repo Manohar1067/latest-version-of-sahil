@@ -13,10 +13,12 @@ import { Route as UserManagementRouteImport } from './routes/user-management'
 import { Route as TrashRouteImport } from './routes/trash'
 import { Route as TransportListRouteImport } from './routes/transport-list'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ResetPinRouteImport } from './routes/reset-pin'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as RegisterRouteImport } from './routes/register'
 import { Route as NewTransportRouteImport } from './routes/new-transport'
 import { Route as NewMemoRouteImport } from './routes/new-memo'
+import { Route as ForgotPinRouteImport } from './routes/forgot-pin'
 import { Route as FleetRouteImport } from './routes/fleet'
 import { Route as ConsigneesRouteImport } from './routes/consignees'
 import { Route as AuditRouteImport } from './routes/audit'
@@ -46,6 +48,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResetPinRoute = ResetPinRouteImport.update({
+  id: '/reset-pin',
+  path: '/reset-pin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ReportsRoute = ReportsRouteImport.update({
   id: '/reports',
   path: '/reports',
@@ -64,6 +71,11 @@ const NewTransportRoute = NewTransportRouteImport.update({
 const NewMemoRoute = NewMemoRouteImport.update({
   id: '/new-memo',
   path: '/new-memo',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ForgotPinRoute = ForgotPinRouteImport.update({
+  id: '/forgot-pin',
+  path: '/forgot-pin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FleetRoute = FleetRouteImport.update({
@@ -112,10 +124,12 @@ export interface FileRoutesByFullPath {
   '/audit': typeof AuditRoute
   '/consignees': typeof ConsigneesRoute
   '/fleet': typeof FleetRoute
+  '/forgot-pin': typeof ForgotPinRoute
   '/new-memo': typeof NewMemoRoute
   '/new-transport': typeof NewTransportRoute
   '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
+  '/reset-pin': typeof ResetPinRoute
   '/settings': typeof SettingsRoute
   '/transport-list': typeof TransportListRoute
   '/trash': typeof TrashRoute
@@ -130,10 +144,12 @@ export interface FileRoutesByTo {
   '/audit': typeof AuditRoute
   '/consignees': typeof ConsigneesRoute
   '/fleet': typeof FleetRoute
+  '/forgot-pin': typeof ForgotPinRoute
   '/new-memo': typeof NewMemoRoute
   '/new-transport': typeof NewTransportRoute
   '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
+  '/reset-pin': typeof ResetPinRoute
   '/settings': typeof SettingsRoute
   '/transport-list': typeof TransportListRoute
   '/trash': typeof TrashRoute
@@ -149,10 +165,12 @@ export interface FileRoutesById {
   '/audit': typeof AuditRoute
   '/consignees': typeof ConsigneesRoute
   '/fleet': typeof FleetRoute
+  '/forgot-pin': typeof ForgotPinRoute
   '/new-memo': typeof NewMemoRoute
   '/new-transport': typeof NewTransportRoute
   '/register': typeof RegisterRoute
   '/reports': typeof ReportsRoute
+  '/reset-pin': typeof ResetPinRoute
   '/settings': typeof SettingsRoute
   '/transport-list': typeof TransportListRoute
   '/trash': typeof TrashRoute
@@ -169,10 +187,12 @@ export interface FileRouteTypes {
     | '/audit'
     | '/consignees'
     | '/fleet'
+    | '/forgot-pin'
     | '/new-memo'
     | '/new-transport'
     | '/register'
     | '/reports'
+    | '/reset-pin'
     | '/settings'
     | '/transport-list'
     | '/trash'
@@ -187,10 +207,12 @@ export interface FileRouteTypes {
     | '/audit'
     | '/consignees'
     | '/fleet'
+    | '/forgot-pin'
     | '/new-memo'
     | '/new-transport'
     | '/register'
     | '/reports'
+    | '/reset-pin'
     | '/settings'
     | '/transport-list'
     | '/trash'
@@ -205,10 +227,12 @@ export interface FileRouteTypes {
     | '/audit'
     | '/consignees'
     | '/fleet'
+    | '/forgot-pin'
     | '/new-memo'
     | '/new-transport'
     | '/register'
     | '/reports'
+    | '/reset-pin'
     | '/settings'
     | '/transport-list'
     | '/trash'
@@ -224,10 +248,12 @@ export interface RootRouteChildren {
   AuditRoute: typeof AuditRoute
   ConsigneesRoute: typeof ConsigneesRoute
   FleetRoute: typeof FleetRoute
+  ForgotPinRoute: typeof ForgotPinRoute
   NewMemoRoute: typeof NewMemoRoute
   NewTransportRoute: typeof NewTransportRoute
   RegisterRoute: typeof RegisterRoute
   ReportsRoute: typeof ReportsRoute
+  ResetPinRoute: typeof ResetPinRoute
   SettingsRoute: typeof SettingsRoute
   TransportListRoute: typeof TransportListRoute
   TrashRoute: typeof TrashRoute
@@ -268,6 +294,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/reset-pin': {
+      id: '/reset-pin'
+      path: '/reset-pin'
+      fullPath: '/reset-pin'
+      preLoaderRoute: typeof ResetPinRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/reports': {
       id: '/reports'
       path: '/reports'
@@ -294,6 +327,13 @@ declare module '@tanstack/react-router' {
       path: '/new-memo'
       fullPath: '/new-memo'
       preLoaderRoute: typeof NewMemoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/forgot-pin': {
+      id: '/forgot-pin'
+      path: '/forgot-pin'
+      fullPath: '/forgot-pin'
+      preLoaderRoute: typeof ForgotPinRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/fleet': {
@@ -360,10 +400,12 @@ const rootRouteChildren: RootRouteChildren = {
   AuditRoute: AuditRoute,
   ConsigneesRoute: ConsigneesRoute,
   FleetRoute: FleetRoute,
+  ForgotPinRoute: ForgotPinRoute,
   NewMemoRoute: NewMemoRoute,
   NewTransportRoute: NewTransportRoute,
   RegisterRoute: RegisterRoute,
   ReportsRoute: ReportsRoute,
+  ResetPinRoute: ResetPinRoute,
   SettingsRoute: SettingsRoute,
   TransportListRoute: TransportListRoute,
   TrashRoute: TrashRoute,

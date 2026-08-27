@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
   Link,
+  useLocation,
   createRootRouteWithContext,
   HeadContent,
   Scripts,
@@ -105,6 +106,12 @@ function RootComponent() {
 // otherwise fail before the login screen even had a chance to render.
 function AuthGate() {
   const { session, loading } = useAuth();
+  const { pathname } = useLocation();
+
+  // Public routes reachable without a session (self-service PIN recovery).
+  const isPublicAuthRoute =
+    pathname === "/forgot-pin" ||
+    pathname === "/reset-pin";
 
   useEffect(() => {
     if (!session) return;
@@ -125,14 +132,14 @@ function AuthGate() {
     );
   }
 
-  if (!session) {
+  if (!session && !isPublicAuthRoute) {
     return <LoginPage />;
   }
 
   return (
     <>
       <Outlet />
-      <Toaster richColors position="top-right" />
+      {session && <Toaster richColors position="top-right" />}
     </>
   );
 }
