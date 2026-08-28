@@ -3,10 +3,18 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
-export const Route = createFileRoute("/reset-pin")({ component: ResetPinPage });
+export const Route = createFileRoute("/reset-pin")({
+  component: ResetPinPage,
+  validateSearch: (s: Record<string, unknown>): { error?: string; error_code?: string; error_description?: string } => ({
+    error: typeof s.error === "string" ? s.error : undefined,
+    error_code: typeof s.error_code === "string" ? s.error_code : undefined,
+    error_description: typeof s.error_description === "string" ? s.error_description : undefined,
+  }),
+});
 
 function ResetPinPage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
   const [ready, setReady] = useState(false);
   const [checking, setChecking] = useState(true);
   const [newPin, setNewPin] = useState("");
@@ -15,31 +23,41 @@ function ResetPinPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const linkErrorCode = search.error_code?.toLowerCase();
+  const linkErrorDescription = search.error_description;
+
   useEffect(() => {
+    let cancelled = false;
+
+    // Supabase fires PASSWORD_RECOVERY when it validates the recovery link and
+    // grants a recovery session where updateUser({ password }) works. Subscribe
+    // first so we catch the event whenever it is delivered while mounted.
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      // Supabase fires PASSWORD_RECOVERY when a recovery link is validated,
-      // which grants a recovery session where updateUser({ password }) works.
       if (event === "PASSWORD_RECOVERY") {
         setReady(true);
         setChecking(false);
       }
     });
 
-    // Cover the case where the recovery session is already established on load.
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        // A recovery session carries a flag; the safest signal is the event
-        // above, so we fall back to enabling only if a recovery flag is present.
-        const user = data.session?.user as any;
-        if (user?.user_metadata?.recovery) {
-          setReady(true);
-        }
-        setChecking(false);
-      })
-      .catch(() => setChecking(false));
+    // The Supabase client auto-detects the recovery tokens (type=recovery) in
+    // the URL hash during startup and persists the recovery session. Because
+    // the root AuthGate only mounts this page after that startup completes, the
+    // one-shot PASSWORD_RECOVERY notification may already have fired before we
+    // subscribed — so a session present on this route is the valid recovery
+    // session; show the "set new PIN" form directly.
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (cancelled) return;
+      if (data.session?.user) {
+        setReady(true);
+      }
+      setChecking(false);
+    })();
 
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -75,6 +93,10 @@ function ResetPinPage() {
           console.warn("profiles.pin mirror failed (non-blocking):", mirrorErr);
         }
       }
+
+      // End the recovery session so the "Back to Login" button returns the user
+      // to the login screen, where they can sign in with the new 6-digit PIN.
+      await supabase.auth.signOut().catch(() => {});
 
       setDone(true);
     } finally {
@@ -119,20 +141,33 @@ function ResetPinPage() {
         {checking ? (
           <p className="text-center text-sm text-gray-500 py-4">Checking recovery link...</p>
         ) : !ready ? (
-          <div className="text-center">
-            <p className="text-sm text-gray-600 mb-6">
-              This reset link is invalid or has expired. Please request a new reset link from the Forgot PIN page.
-            </p>
-            <Link
-              to="/forgot-pin"
-              className="w-full inline-block text-center bg-[#0B2A55] text-white rounded-md py-3 font-medium hover:bg-[#0A2344]"
-            >
-              Request New Link
-            </Link>
-            <Link to="/" className="block mt-3 text-sm text-[#0B2A55] hover:underline">
-              Back to Login
-            </Link>
-          </div>
+          (() => {
+            if (linkErrorCode) {
+              console.warn("Reset link rejected by Supabase:", { code: linkErrorCode, description: linkErrorDescription });
+            }
+            const expired = linkErrorCode === "otp_expired" || linkErrorCode === "otp_exired" || /expired/i.test(linkErrorDescription || "");
+            return (
+              <div className="text-center">
+                <p className="text-sm text-gray-600 mb-1">
+                  {expired
+                    ? "Your reset link has expired. Please request a new reset link."
+                    : "This reset link is invalid or has expired. Please request a new reset link."}
+                </p>
+                <p className="text-xs text-gray-400 mb-6">
+                  {linkErrorDescription || "Please request a fresh link from the Forgot PIN page."}
+                </p>
+                <Link
+                  to="/forgot-pin"
+                  className="w-full inline-block text-center bg-[#0B2A55] text-white rounded-md py-3 font-medium hover:bg-[#0A2344]"
+                >
+                  Request New Link
+                </Link>
+                <Link to="/" className="block mt-3 text-sm text-[#0B2A55] hover:underline">
+                  Back to Login
+                </Link>
+              </div>
+            );
+          })()
         ) : (
           <form onSubmit={handleSubmit} noValidate>
             <label className="block text-sm font-medium text-gray-700 mb-2">New 6-Digit PIN</label>

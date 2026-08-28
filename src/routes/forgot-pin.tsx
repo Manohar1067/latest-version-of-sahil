@@ -13,6 +13,7 @@ function ForgotPinPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (sending) return;
     setError(null);
 
     const value = email.trim();
@@ -23,12 +24,41 @@ function ForgotPinPage() {
 
     setSending(true);
     try {
+      // Environment-aware redirect: uses the real origin the user is on
+      // (no hardcoded localhost:3000). Works for local dev on any port and
+      // for the production Vercel origin automatically.
       const redirectTo = `${window.location.origin}/reset-pin`;
+      console.log("Forgot PIN — requesting recovery email for:", value, "redirectTo:", redirectTo);
+
       const { error: sendError } = await supabase.auth.resetPasswordForEmail(value, {
         redirectTo,
       });
       if (sendError) {
-        console.error("resetPasswordForEmail error:", sendError);
+        // Log every detail for diagnosis — never hide the real error during dev.
+        console.error("resetPasswordForEmail error:", {
+          message: sendError.message,
+          status: (sendError as any).status,
+          code: (sendError as any).code,
+          name: sendError.name,
+          full: sendError,
+        });
+
+        const code = ((sendError as any).code || "").toLowerCase();
+        const status = (sendError as any).status;
+        const msg = (sendError.message || "").toLowerCase();
+
+        const isRateLimit =
+          status === 429 ||
+          code.includes("rate_limit") ||
+          code.includes("over_email_send_rate_limit") ||
+          code.includes("over_request_rate_limit") ||
+          /frequently|too many|rate limit|wait.*seconds|minute/i.test(msg);
+
+        if (isRateLimit) {
+          setError("We've sent several links recently. Please wait a few minutes before requesting another reset link.");
+          return;
+        }
+
         setError("Unable to send reset link. Please try again.");
         return;
       }
