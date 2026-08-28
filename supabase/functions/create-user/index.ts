@@ -15,37 +15,50 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // Browsers send a CORS preflight (OPTIONS) before any POST carrying custom
 // headers. Without these headers the request never reaches the function and
 // the client reports "Failed to send a request to the Edge Function".
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Max-Age": "86400",
+const ALLOWED_ORIGINS = [
+  "https://sahils-dispatch-desk.vercel.app",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+
+const corsHeaders = (req: Request) => {
+  const origin = req.headers.get("origin") ?? "";
+  const allowOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : "";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      req.headers.get("Access-Control-Request-Headers") ??
+      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Max-Age": "86400",
+  };
 };
 
-const json = (body: unknown, status = 200) =>
+const json = (body: unknown, status = 200, req: Request) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json", ...corsHeaders },
+    headers: { "Content-Type": "application/json", ...corsHeaders(req) },
   });
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders(req) });
   }
   if (req.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
+    return json({ error: "Method not allowed" }, 405, req);
   }
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ error: "Missing authorization" }, 401);
+    if (!authHeader) return json({ error: "Missing authorization" }, 401, req);
 
     const callerClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
 
     const { data: callerUser, error: callerErr } = await callerClient.auth.getUser();
-    if (callerErr || !callerUser?.user) return json({ error: "Invalid session" }, 401);
+    if (callerErr || !callerUser?.user) return json({ error: "Invalid session" }, 401, req);
 
     const adminClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
@@ -56,7 +69,7 @@ serve(async (req) => {
       .single();
 
     if (callerProfile?.role !== "Super Admin") {
-      return json({ error: "Only Super Admins can do this" }, 403);
+      return json({ error: "Only Super Admins can do this" }, 403, req);
     }
 
     const body = await req.json();
@@ -65,24 +78,24 @@ serve(async (req) => {
     if (action === "reset_pin") {
       const { targetAuthUserId, newPin } = body;
       if (!targetAuthUserId || !/^\d{6}$/.test(newPin)) {
-        return json({ error: "Missing target user or invalid PIN (must be 6 digits)" }, 400);
+        return json({ error: "Missing target user or invalid PIN (must be 6 digits)" }, 400, req);
       }
 
       const { error: updateErr } = await adminClient.auth.admin.updateUserById(targetAuthUserId, {
         password: newPin,
       });
-      if (updateErr) return json({ error: updateErr.message }, 400);
+      if (updateErr) return json({ error: updateErr.message }, 400, req);
 
       await adminClient.from("profiles").update({ pin: newPin }).eq("auth_user_id", targetAuthUserId);
 
-      return json({ success: true });
+      return json({ success: true }, 200, req);
     }
 
     // action === "create"
     const { name, email, phone, role, pin } = body;
 
     if (!name || !email || !role || !/^\d{6}$/.test(pin)) {
-      return json({ error: "Missing or invalid fields (PIN must be 6 digits)" }, 400);
+      return json({ error: "Missing or invalid fields (PIN must be 6 digits)" }, 400, req);
     }
 
     const { data: newAuthUser, error: createErr } = await adminClient.auth.admin.createUser({
@@ -92,7 +105,7 @@ serve(async (req) => {
     });
 
     if (createErr || !newAuthUser?.user) {
-      return json({ error: createErr?.message ?? "Failed to create auth user" }, 400);
+      return json({ error: createErr?.message ?? "Failed to create auth user" }, 400, req);
     }
 
     const { data: newProfile, error: profileErr } = await adminClient
@@ -111,11 +124,11 @@ serve(async (req) => {
 
     if (profileErr) {
       await adminClient.auth.admin.deleteUser(newAuthUser.user.id);
-      return json({ error: profileErr.message }, 400);
+      return json({ error: profileErr.message }, 400, req);
     }
 
-    return json({ profile: newProfile });
+    return json({ profile: newProfile }, 200, req);
   } catch (e) {
-    return json({ error: (e as Error).message }, 500);
+    return json({ error: (e as Error).message }, 500, req);
   }
 });
