@@ -65,6 +65,7 @@ export interface TransportEntry {
   deletedAt?: string;
   createdAt: string;
   updatedAt: string;
+  overriddenFields?: Record<string, boolean>;
 }
 
 export type TransportEntryInput = Omit<
@@ -105,10 +106,11 @@ const FIELD_MAP: Record<string, string> = {
   finalPaymentDate: "final_payment_date",
   status: "status",
   remarks: "remarks",
+  overriddenFields: "overridden_fields",
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-function rowToEntry(r: any): TransportEntry {
+ function rowToEntry(r: any): TransportEntry {
   return {
     id: r.id,
     entryNumber: r.entry_number,
@@ -148,6 +150,10 @@ function rowToEntry(r: any): TransportEntry {
     deletedAt: r.deleted_at ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    overriddenFields:
+      typeof r.overridden_fields === "object" && r.overridden_fields !== null
+        ? r.overridden_fields
+        : undefined,
   };
 }
 
@@ -190,7 +196,8 @@ export async function getTransportEntries(opts?: { includeDeleted?: boolean }): 
   let q = supabase
     .from("transport_list")
     .select("*")
-    .order("dispatch_date", { ascending: false, nullsFirst: false });
+    .order("dispatch_date", { ascending: false, nullsFirst: false })
+    .order("entry_number", { ascending: false, nullsFirst: false });
   // Rows inserted outside the app may have is_deleted = NULL; `.eq(false)` would
   // silently hide them, so treat NULL as "not deleted".
   if (!opts?.includeDeleted) q = q.or("is_deleted.is.null,is_deleted.eq.false");
@@ -228,10 +235,34 @@ export async function createTransportEntry(input: TransportEntryInput): Promise<
 export async function updateTransportEntry(
   id: string,
   patch: Partial<TransportEntryInput>,
+  editedFields?: string[],
 ): Promise<TransportEntry> {
+  const row = entryToRow(patch);
+  if (editedFields && editedFields.length > 0) {
+    let existingOverridden: Record<string, boolean> | null = null;
+    try {
+      const { data: existing } = await supabase
+        .from("transport_list")
+        .select("overridden_fields")
+        .eq("id", id)
+        .maybeSingle();
+      if (typeof existing?.overridden_fields === "object" && existing.overridden_fields !== null) {
+        existingOverridden = existing.overridden_fields;
+      }
+    } catch {
+      existingOverridden = null;
+    }
+    if (existingOverridden !== null) {
+      const overridden = { ...existingOverridden };
+      editedFields.forEach((f) => {
+        overridden[f] = true;
+      });
+      row.overridden_fields = overridden;
+    }
+  }
   const { data, error } = await supabase
     .from("transport_list")
-    .update(entryToRow(patch))
+    .update(row)
     .eq("id", id)
     .select()
     .single();

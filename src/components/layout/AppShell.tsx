@@ -105,7 +105,7 @@ export function AppShell({
             </div>
           )}
           <div className="leading-tight">
-            <div className="text-[13px] font-bold tracking-wide">
+            <div className="text-[14px] font-bold tracking-wide">
               {settings?.companyName ?? "SAHIL ROAD LINES"}
             </div>
             <div className="text-[10px] uppercase tracking-[0.14em] text-white/60">
@@ -121,7 +121,7 @@ export function AppShell({
               <Link
                 key={n.to}
                 to={n.to}
-                className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-[14px] transition-colors duration-150 ${
+                className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-[15px] transition-colors duration-150 ${
                   active
                     ? "bg-[color:var(--color-navy-active)] font-semibold text-white"
                     : "text-white/85 hover:bg-[color:var(--color-navy-hover)]"

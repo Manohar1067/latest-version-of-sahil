@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import {
-  getSettings, updateSettings, _resetStore, exportAllData, importAllData, type Settings,
+  getSettings, updateSettings, _resetStore, exportAllDataXlsx, importAllDataXlsx, type Settings,
 } from "@/lib/dataStore";
 import { supabase } from "@/lib/supabaseClient";
 import { Input } from "@/components/ui/input";
@@ -19,13 +19,35 @@ import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
+/** Persists the last successful backup timestamp in the browser so it survives
+ * refresh and re-login without requiring a live-DB migration. */
+const LAST_BACKUP_KEY = "srl:last-backup-at";
+
+function formatBackupTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("en-IN", {
+      day: "2-digit", month: "short", year: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true,
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function getLastBackup(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(LAST_BACKUP_KEY);
+}
+
 function SettingsPage() {
   const { data } = useStoreData<Settings>(() => getSettings(), []);
   const [form, setForm] = useState<Settings | null>(null);
   const [uploading, setUploading] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [pendingImportJson, setPendingImportJson] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<{ trucks: number; consignees: number; memos: number } | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -48,6 +70,7 @@ function SettingsPage() {
   };
 
   useEffect(() => { if (data) setForm(data); }, [data]);
+  useEffect(() => { setLastBackup(getLastBackup()); }, []);
 
   if (!form) return <AppShell title="Settings"><div className="card-surface p-8">Loading…</div></AppShell>;
 
@@ -86,14 +109,12 @@ function SettingsPage() {
 
   const exportAll = async () => {
     try {
-      const json = await exportAllData();
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `sahil-road-lines-backup-${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
-      toast.success("Backup downloaded");
+      await exportAllDataXlsx();
+      // Only a SUCCESSFUL export advances the "Last Backup" timestamp.
+      const now = new Date().toISOString();
+      try { window.localStorage.setItem(LAST_BACKUP_KEY, now); } catch { /* ignore */ }
+      setLastBackup(now);
+      toast.success("Excel backup downloaded");
     } catch (e) {
       toast.error("Export failed");
       console.error(e);
@@ -104,22 +125,20 @@ function SettingsPage() {
   const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const text = await file.text();
-      setPendingImportJson(text);
+      setImportFile(file);
     }
     e.target.value = "";
   };
   const confirmImport = async () => {
-    if (!pendingImportJson) return;
+    if (!importFile) return;
     try {
-      const summary = await importAllData(pendingImportJson);
+      const summary = await importAllDataXlsx(importFile);
       setImportSummary(summary);
       toast.success(`Imported ${summary.memos} memos, ${summary.trucks} trucks, ${summary.consignees} consignees`);
+      setImportFile(null);
     } catch (e) {
       toast.error("Import failed — invalid file");
       console.error(e);
-    } finally {
-      setPendingImportJson(null);
     }
   };
 
@@ -195,14 +214,21 @@ function SettingsPage() {
         <div className="card-surface p-6">
           <div className="section-title mb-2">Backup / Restore</div>
           <div className="mb-5 border-b" />
+          <div className="mb-3 flex items-center gap-2 text-sm">
+            <span className="font-medium text-foreground">Last Backup:</span>
+            <span className={lastBackup ? "text-navy font-semibold" : "text-muted-foreground"}>
+              {lastBackup ? formatBackupTime(lastBackup) : "Never"}
+            </span>
+          </div>
           <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={exportAll}>Export All Data (JSON)</Button>
-            <Button variant="outline" onClick={pickImportFile}>Import Data…</Button>
-            <input ref={importInputRef} type="file" accept="application/json" hidden onChange={onImportFile} />
+            <Button variant="outline" onClick={exportAll}>Export All Data (Excel)</Button>
+            <Button variant="outline" onClick={pickImportFile}>Import Excel…</Button>
+            <input ref={importInputRef} type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={onImportFile} />
             <Button variant="destructive" onClick={() => setResetOpen(true)}>Reset All Data</Button>
           </div>
           <div className="mt-3 text-xs text-muted-foreground">
-            Backup contains every memo, truck, consignee, setting, and audit entry as a single JSON file. Import merges (upserts) records by ID.
+            Export downloads an Excel workbook (Memos / Fleet / Consignees / Settings sheets). Import reads that workbook and merges records using
+            memo number, truck number, and company name as stable identifiers.
           </div>
         </div>
       </div>
@@ -212,12 +238,14 @@ function SettingsPage() {
       </div>
 
       {/* Import confirm */}
-      <AlertDialog open={!!pendingImportJson} onOpenChange={(o) => !o && setPendingImportJson(null)}>
+      <AlertDialog open={!!importFile} onOpenChange={(o) => !o && setImportFile(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Import backup?</AlertDialogTitle>
+            <AlertDialogTitle>Import Excel backup?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will overwrite existing records with matching IDs (memos, trucks, consignees). This action cannot be undone.
+              This will import memos, trucks, and consignees from the selected Excel file.
+              Existing records with matching identifiers (memo number, truck number, company name) will be updated;
+              new records will be inserted. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -248,14 +276,24 @@ function SettingsPage() {
       <AlertDialog open={resetOpen} onOpenChange={setResetOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reset all data?</AlertDialogTitle>
+            <AlertDialogTitle>Reset all business data?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently clears every memo, truck, consignee, and audit entry. Consider exporting a backup first.
+              This will permanently delete all records from:
+              <ul className="mt-2 list-inside list-disc space-y-1">
+                <li>Register List / memo data</li>
+                <li>Transport List data</li>
+                <li>Consignee Management</li>
+                <li>Fleet Management</li>
+              </ul>
+              <p className="mt-2">
+                User accounts, authentication, settings, and your current login will <b>NOT</b> be affected.
+                Consider exporting a backup first.
+              </p>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={async () => { await _resetStore(); toast.success("All data reset"); }}>Reset</AlertDialogAction>
+            <AlertDialogAction onClick={async () => { await _resetStore(); setResetOpen(false); toast.success("Business data reset"); }}>Reset Business Data</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

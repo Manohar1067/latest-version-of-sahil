@@ -4,7 +4,7 @@ import { useStoreData } from "@/lib/useStore";
 import { getMemo, getTruck, getConsignee, getSettings, type Memo, type FleetTruck, type Consignee, type Settings } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Printer, Download, ArrowLeft, Pencil, ChevronDown, AlertTriangle, FileText, Phone, Mail, MapPin, Share2, IndianRupee, Weight, Truck, Wallet, Coins, Percent, PackagePlus, Receipt, Banknote, Calculator, User, CreditCard } from "lucide-react";
+import { Printer, Download, ArrowLeft, Pencil, ChevronDown, AlertTriangle, Phone, Mail, MapPin, Share2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
@@ -108,7 +108,52 @@ function saveBlob(blob: Blob, name: string) {
 }
 
 /**
- * The Goods Receipt document.
+ * The SRL logo — a close digital recreation of the original Sahil Road Lines
+ * diamond branding (navy diamond with "SRL" lettering). Used on receipts when
+ * no custom logo is configured, and as a consistent brand mark.
+ */
+function SRLDiamond({ size = 76 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} aria-label="SRL logo">
+      <g transform="rotate(45 50 50)">
+        <rect x="12" y="12" width="76" height="76" rx="6" fill="#0B2A55" />
+        <rect x="12" y="12" width="76" height="76" rx="6" fill="none" stroke="#C1121F" strokeWidth="3" />
+      </g>
+      <text
+        x="50"
+        y="60"
+        textAnchor="middle"
+        fontFamily="Arial, Helvetica, sans-serif"
+        fontWeight="800"
+        fontSize="34"
+        fill="#ffffff"
+        letterSpacing="1"
+      >
+        SRL
+      </text>
+    </svg>
+  );
+}
+
+/**
+ * The Goods Despatch Memo document.
+ *
+ * Redesigned to mirror the structure/visual organisation of the original
+ * physical Sahil Road Lines Goods Despatch Memo:
+ *   - strong company header with logo
+ *   - memo number / date block
+ *   - From / To
+ *   - consignor / consignee
+ *   - goods description, rate, weight
+ *   - financial details
+ *   - truck details
+ *   - expenses
+ *   - signatures (driver / office / company stamp)
+ *   - terms & conditions
+ *   - company footer
+ *
+ * ALL business values are dynamic (read from the memo/settings) — nothing is
+ * hardcoded.
  *
  * Rendered ONLY so it can be lifted to a portal on <body> (see MemoView). Being
  * a direct child of <body> — outside #root and outside AppShell's flex/grid
@@ -126,6 +171,16 @@ const ReceiptPage = forwardRef<
     terms: string[];
   }
 >(function ReceiptPage({ memo, settings, truck, consignee, terms }, ref) {
+  /** Resolve truck number: prefer linked truck, fall back to free-text. */
+  const truckNo = truck?.truckNumber || memo.truckNumber || "—";
+  /** Resolve consignee name: prefer linked consignee, fall back to free-text. */
+  const consigneeName = consignee?.companyName || memo.consigneeName || "—";
+  const logoEl = settings.logoUrl ? (
+    <img src={settings.logoUrl} className="h-[84px] w-auto max-w-[104px] object-contain" alt="Company logo" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.15))" }} />
+  ) : (
+    <SRLDiamond size={76} />
+  );
+
   return (
     <div
       ref={ref}
@@ -151,93 +206,90 @@ const ReceiptPage = forwardRef<
           flexDirection: "column",
           background: "#ffffff",
           color: "#000",
-          border: `2px solid ${NAVY}`,
+          border: `3px solid ${NAVY}`,
           overflow: "visible",
         }}
       >
-      {/* ---------------- HEADER (logo | identity | receipt meta) ---------------- */}
-      <div className="avoid-break flex items-stretch" style={{ borderBottom: `2px solid ${NAVY}` }}>
-        <div className="flex w-[120px] shrink-0 items-center justify-center px-2 py-[10px]">
-          {settings.logoUrl ? (
-            <img src={settings.logoUrl} className="h-[76px] w-auto max-w-[104px] object-contain" alt="Company logo" />
-          ) : (
-            <div className="flex h-[56px] w-[56px] rotate-45 items-center justify-center" style={{ background: NAVY }}>
-              <div className="h-5 w-5 rotate-45 bg-white" />
-            </div>
-          )}
+      {/* ---------------- HEADER (logo | identity | memo meta) ---------------- */}
+      <div className="avoid-break flex items-stretch" style={{ borderBottom: `3px solid ${NAVY}`, background: `linear-gradient(180deg, #F2F5FA 0%, #ffffff 100%)` }}>
+        <div className="flex w-[130px] shrink-0 items-center justify-center px-2 py-[10px]">
+          {logoEl}
         </div>
         <div className="flex flex-1 flex-col items-center justify-center px-3 py-[10px] text-center">
-          <div style={{ fontSize: "28px", fontWeight: 800, letterSpacing: "-0.3px", color: NAVY, lineHeight: 1.05 }}>
+          <div style={{ fontSize: "30px", fontWeight: 900, letterSpacing: "-0.3px", color: NAVY, lineHeight: 1.05 }}>
             {settings.companyName || "SAHIL ROAD LINES"}
           </div>
-          <div style={{ fontSize: "14px", fontWeight: 650, color: RED }}>
-            Transport Contractor &amp; Commission Agents
+          <div style={{ fontSize: "14px", fontWeight: 700, color: RED, letterSpacing: "0.5px" }}>
+            Transport Contractors &amp; Commission Agents
           </div>
-          <div style={{ fontSize: "12px", lineHeight: 1.25 }} className="text-neutral-800">
+          <div style={{ fontSize: "12px", lineHeight: 1.3, marginTop: "2px" }} className="text-neutral-800">
             {settings.address}
           </div>
-          <div style={{ fontSize: "12px" }} className="text-neutral-800">
+          <div style={{ fontSize: "12px", marginTop: "1px" }} className="text-neutral-800">
             Ph: {settings.phone || "—"}
             {settings.email ? `  ·  ${settings.email}` : ""}
           </div>
-          {settings.gst && (
-            <div style={{ fontSize: "12px" }} className="text-neutral-800">GST: {settings.gst}</div>
-          )}
-          <div style={{ fontSize: "11.5px", fontWeight: 700, color: NAVY }}>
+          <div style={{ fontSize: "11.5px", fontWeight: 700, color: NAVY, marginTop: "2px" }}>
             {settings.jurisdictionText || "Subject to Visakhapatnam Jurisdiction"}
           </div>
+          {settings.gst && (
+            <div style={{ fontSize: "11.5px" }} className="text-neutral-700">GSTIN: {settings.gst}</div>
+          )}
         </div>
         <div
           className="flex w-[190px] shrink-0 flex-col justify-center gap-[6px] px-3 py-[10px]"
-          style={{ background: "#F2F5FA", borderLeft: `2px solid ${NAVY}` }}
+          style={{ background: NAVY, color: "#fff", borderLeft: `3px solid ${NAVY}` }}
         >
           <div
             className="rounded px-2 py-[5px] text-center"
-            style={{ background: RED, color: "#fff", fontSize: "17px", fontWeight: 800, letterSpacing: "1px" }}
+            style={{ background: RED, color: "#fff", fontSize: "16px", fontWeight: 800, letterSpacing: "0.5px" }}
           >
-            GOODS RECEIPT
+            GOODS DESPATCH
           </div>
           <div className="flex justify-between text-[13px]">
-            <span className="text-neutral-600">Memo No.</span>
-            <span className="font-extrabold" style={{ color: NAVY }}>{memo.memoNumber}</span>
+            <span className="text-white/70">Memo No.</span>
+            <span className="font-extrabold text-white">{memo.memoNumber}</span>
           </div>
           <div className="flex justify-between text-[13px]">
-            <span className="text-neutral-600">Date</span>
-            <span className="font-semibold">{formatDate(memo.dispatchDate)}</span>
+            <span className="text-white/70">Date</span>
+            <span className="font-semibold text-white">{formatDate(memo.dispatchDate)}</span>
           </div>
         </div>
       </div>
 
-      {/* ---------------- CONSIGNOR / CONSIGNEE DETAILS ---------------- */}
+      {/* ---------------- ROUTE / FROM / TO ---------------- */}
+      <div className="avoid-break px-3 py-[6px] flex items-center justify-between" style={{ borderBottom: `2px solid ${NAVY}`, background: "#F5F6FA" }}>
+        <div className="flex items-center gap-2 text-[13.5px]">
+          <span className="text-neutral-500">From:</span>
+          <span className="font-bold" style={{ color: NAVY }}>{memo.fromLocation || "—"}</span>
+        </div>
+        <div className="text-[20px] font-black" style={{ color: RED }}>→</div>
+        <div className="flex items-center gap-2 text-[13.5px]">
+          <span className="text-neutral-500">To / Destination:</span>
+          <span className="font-bold" style={{ color: NAVY }}>{memo.toLocation || "—"}</span>
+        </div>
+      </div>
+
+      {/* ---------------- CONSIGNOR / CONSIGNEE + TRUCK DETAILS ---------------- */}
       <div className="avoid-break grid grid-cols-2" style={{ borderBottom: `2px solid ${NAVY}` }}>
         <div style={{ borderRight: `2px solid ${NAVY}` }}>
-          <SectionHead>Consignor Details</SectionHead>
-          <Row label="From" value={memo.fromLocation} />
+          <SectionHead>Consignor</SectionHead>
+          <Row label="Consignor" value={memo.fromLocation} />
           <Row label="Transport Name" value={memo.transportName} />
           <Row label="Material" value={memo.materialName} />
           <Row label="Description" value={memo.description} />
           <Row label="Rate / Ton" value={formatMoney(memo.ratePerTon)} money />
           <Row label="Weight (Tons)" value={memo.weightTons} />
           <Row label="Net Freight" value={formatMoney(memo.netFreight)} money />
-          <Row label="Advance" value={formatMoney(memo.advance)} money />
-          <Row label="Balance" value={formatMoney(memo.balance)} money />
-          <Row label="Paid At" value={`${memo.paidBy}${memo.paymentMethod ? " · " + memo.paymentMethod : ""}`} last />
         </div>
         <div>
           <SectionHead>Consignee / Truck Details</SectionHead>
-          <Row label="Truck Number" value={truck?.truckNumber} />
+          <Row label="Truck Number" value={truckNo} />
           <Row label="Lorry Owner Name" value={memo.ownerName} />
           <Row label="Driver Name" value={memo.driverName} />
           <Row label="Owner Name" value={memo.ownerName} />
           <Row label="Owner Phone" value={memo.ownerPhone} />
-          <Row label="Consignee" value={consignee?.companyName} />
-          <Row label="Consignor" value={memo.fromLocation} />
-          <Row label="Balance" value={formatMoney(memo.balance)} money />
-          <Row label="Commission" value={formatMoney(memo.commission)} money />
-          <Row label="Loading Charges" value={formatMoney(memo.loadingCharges)} money />
-          <Row label="Goods Mamuli" value={formatMoney(memo.goodsMamuli)} money />
-          <Row label="TDS" value={formatMoney(memo.tds)} money />
-          <Row label="Total Expenses" value={formatMoney(memo.totalExpenses)} money />
+          <Row label="Consignee" value={consigneeName} />
           <Row label="Remarks" value={memo.remarks} last />
         </div>
       </div>
@@ -247,43 +299,37 @@ const ReceiptPage = forwardRef<
         <SectionHead>Financial / Freight Details</SectionHead>
         <div className="grid grid-cols-4">
           {[
-            { icon: IndianRupee, label: "Rate / Ton", value: formatMoney(memo.ratePerTon), strong: true },
-            { icon: Weight, label: "Weight", value: `${memo.weightTons ?? 0} T` },
-            { icon: Truck, label: "Net Freight", value: formatMoney(memo.netFreight), strong: true },
-            { icon: Wallet, label: "Advance", value: formatMoney(memo.advance) },
-            { icon: Coins, label: "Balance", value: formatMoney(memo.balance), strong: true },
-            { icon: Percent, label: "Commission", value: formatMoney(memo.commission) },
-            { icon: PackagePlus, label: "Loading Charges", value: formatMoney(memo.loadingCharges) },
-            { icon: Receipt, label: "TDS", value: formatMoney(memo.tds) },
-            { icon: Banknote, label: "Goods Mamuli", value: formatMoney(memo.goodsMamuli) },
-            { icon: Calculator, label: "Total Expenses", value: formatMoney(memo.totalExpenses), strong: true },
-            { icon: User, label: "Paid By", value: memo.paidBy || "—" },
-            { icon: CreditCard, label: "Payment Mode", value: memo.paymentMethod || "—" },
-          ].map((c, i) => {
-            const Icon = c.icon;
-            return (
-              <div
-                key={c.label}
-                className="flex items-center gap-1.5 px-2.5 py-[4px]"
-                style={{
-                  borderRight: (i + 1) % 4 === 0 ? "none" : `1px solid ${LINE}`,
-                  borderBottom: i < 8 ? `1px solid ${LINE}` : "none",
-                }}
-              >
-                <Icon className="h-[13px] w-[13px] shrink-0" style={{ color: NAVY }} />
-                <div className="min-w-0">
-                  <div style={{ fontSize: "11px", color: "#5A637A", lineHeight: 1.15 }}>{c.label}</div>
-                  <div style={{ fontSize: "13.5px", fontWeight: 700, color: c.strong ? RED : NAVY, lineHeight: 1.2 }}>
-                    {c.value}
-                  </div>
-                </div>
+            { label: "Rate / Ton", value: formatMoney(memo.ratePerTon), strong: true },
+            { label: "Weight", value: `${memo.weightTons ?? 0} T` },
+            { label: "Net Freight", value: formatMoney(memo.netFreight), strong: true },
+            { label: "Advance", value: formatMoney(memo.advance) },
+            { label: "Balance", value: formatMoney(memo.balance), strong: true },
+            { label: "Commission", value: formatMoney(memo.commission) },
+            { label: "Loading Charges", value: formatMoney(memo.loadingCharges) },
+            { label: "TDS", value: formatMoney(memo.tds) },
+            { label: "Goods Mamuli", value: formatMoney(memo.goodsMamuli) },
+            { label: "Total Expenses", value: formatMoney(memo.totalExpenses), strong: true },
+            { label: "Paid By", value: memo.paidBy || "—" },
+            { label: "Payment Mode", value: memo.paymentMethod || "—" },
+          ].map((c, i) => (
+            <div
+              key={c.label}
+              className="px-2.5 py-[4px]"
+              style={{
+                borderRight: (i + 1) % 4 === 0 ? "none" : `1px solid ${LINE}`,
+                borderBottom: i < 8 ? `1px solid ${LINE}` : "none",
+              }}
+            >
+              <div style={{ fontSize: "11px", color: "#5A637A", lineHeight: 1.15 }}>{c.label}</div>
+              <div style={{ fontSize: "13.5px", fontWeight: 700, color: c.strong ? RED : NAVY, lineHeight: 1.2 }}>
+                {c.value}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* ---------------- FINAL PAYABLE ---------------- */}
+      {/* ---------------- FINAL PAYABLE + PAYMENT INFO ---------------- */}
       <div
         className="avoid-break px-4 py-[4px] text-center"
         style={{ background: "#FDECEE", borderBottom: `2px solid ${NAVY}` }}
@@ -295,16 +341,22 @@ const ReceiptPage = forwardRef<
         <div style={{ fontSize: "12px", fontWeight: 600, color: NAVY }}>
           (Rupees {amountInWords(memo.finalPayable)} Only)
         </div>
-        <div className="mt-[1px] inline-flex items-center gap-1" style={{ fontSize: "11.5px", fontWeight: 700, color: RED }}>
-          <AlertTriangle className="h-[13px] w-[13px] shrink-0" />
-          Goods Receipt should be arrived within 15 days.
+        <div
+          className="mt-[2px] inline-flex flex-wrap items-center justify-center gap-x-3 text-center"
+          style={{ fontSize: "11.5px", fontWeight: 700, color: NAVY }}
+        >
+          {memo.finalPaymentDate && (
+            <span>Final Payment Date: {formatDate(memo.finalPaymentDate)}</span>
+          )}
+          {memo.paidBy && <span>Paid By: {memo.paidBy}</span>}
+          {memo.paymentMethod && <span>Mode: {memo.paymentMethod}</span>}
         </div>
       </div>
 
       {/* ---------------- TERMS & CONDITIONS (fills remaining vertical space) ---------------- */}
       <div className="avoid-break relative flex flex-1 flex-col px-4 pb-[6px] pt-[6px]" style={{ borderBottom: `2px solid ${NAVY}` }}>
         <div className="mb-[4px] flex items-center gap-2">
-          <FileText className="h-4 w-4" style={{ color: NAVY }} />
+          <AlertTriangle className="h-4 w-4" style={{ color: NAVY }} />
           <span style={{ fontSize: "14px", fontWeight: 800, letterSpacing: "1px", color: NAVY }}>
             TERMS &amp; CONDITIONS
           </span>
@@ -436,7 +488,7 @@ function MemoView() {
   };
 
   const shareText = () =>
-    `${settings?.companyName ?? "Sahil Road Lines"}\nMemo ${memo?.memoNumber}\nDate: ${formatDate(memo?.dispatchDate ?? "")}\nTruck: ${truck?.truckNumber ?? "—"}\nMaterial: ${memo?.materialName ?? "—"}\nFinal Payable: ${formatMoney(memo?.finalPayable ?? 0)}`;
+    `${settings?.companyName ?? "Sahil Road Lines"}\nMemo ${memo?.memoNumber}\nDate: ${formatDate(memo?.dispatchDate ?? "")}\nTruck: ${truck?.truckNumber || memo?.truckNumber || "—"}\nMaterial: ${memo?.materialName ?? "—"}\nFinal Payable: ${formatMoney(memo?.finalPayable ?? 0)}`;
 
   const shareWhatsApp = async () => {
     if (!memo) return;

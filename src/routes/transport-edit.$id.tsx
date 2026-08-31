@@ -6,8 +6,9 @@ import {
   updateTransportEntry, getTransportEntry,
   ALL_TRANSPORT_STATUSES, type TransportStatus, type TransportEntryInput,
 } from "@/lib/transportListStore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -48,6 +49,45 @@ function TransportEditPage() {
   const [form, setForm] = useState<TransportEntryInput | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editedFields, setEditedFields] = useState<Set<string>>(new Set());
+  // The values as originally loaded from the DB. Used to detect which fields the
+  // user ACTUALLY changed, so only real edits become persistent overrides.
+  const originalRef = useRef<TransportEntryInput | null>(null);
+
+  /** app camelCase field → transport_list column name */
+  const FIELD_TO_COL: Record<string, string> = {
+    dispatchDate: "dispatch_date",
+    fromLocation: "from_location",
+    toLocation: "to_location",
+    transportName: "transport_name",
+    truckNumber: "truck_number",
+    driverName: "driver_name",
+    ownerName: "owner_name",
+    ownerPhone: "owner_phone",
+    consigneeName: "consignee_name",
+    materialName: "material_name",
+    weightTons: "weight_tons",
+    ratePerTon: "rate_per_ton",
+    netFreight: "net_freight",
+    advance: "advance",
+    balance: "balance",
+    haltingCharge: "halting_charge",
+    unloadingDate: "unloading_date",
+    lrReceivedDate: "lr_received_date",
+    lrSubmittedDate: "lr_submitted_date",
+    description: "description",
+    commission: "commission",
+    loadingCharges: "loading_charges",
+    tds: "tds",
+    goodsMamuli: "goods_mamuli",
+    totalExpenses: "total_expenses",
+    paidBy: "paid_by",
+    paymentMethod: "payment_method",
+    finalPayable: "final_payable",
+    finalPaymentDate: "final_payment_date",
+    status: "status",
+    remarks: "remarks",
+  };
 
   useEffect(() => {
     getTransportEntry(id)
@@ -57,6 +97,7 @@ function TransportEditPage() {
         void _i; void _d; void _c; void _u; void _x;
         // Stored values are loaded as-is — NO recalculation on load.
         setForm(rest);
+        originalRef.current = rest;
         setMemoNumber(entryNumber);
       })
       .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to load entry"));
@@ -64,24 +105,35 @@ function TransportEditPage() {
 
   const set = <K extends keyof TransportEntryInput>(k: K, v: TransportEntryInput[K]) => {
     setForm((f) => (f ? { ...f, [k]: v } : f));
+    const col = FIELD_TO_COL[k as string];
+    if (col) setEditedFields((s) => new Set(s).add(col));
     setDirty(true);
   };
 
   /** Only triggered when the user actively edits an amount field — never on load. */
   type NumKey = "weightTons" | "ratePerTon" | "advance" | "commission" | "loadingCharges" | "tds" | "goodsMamuli" | "haltingCharge";
+
+  /** PART 9: auto-complete when final payment date is set. */
+  useEffect(() => {
+    if (form?.finalPaymentDate && form.status !== "Completed") {
+      setForm((f) => (f ? { ...f, status: "Completed" as TransportStatus } : f));
+    }
+  }, [form?.finalPaymentDate]);
+
   const setAndRecalc = (k: NumKey, v: number) => {
     setForm((f) => {
       if (!f) return f;
       const next = { ...f, [k]: v };
       const netFreight = Math.round((next.weightTons || 0) * (next.ratePerTon || 0));
       const balance = netFreight - (next.advance || 0);
-      // Halting charge is part of a transport entry's expenses.
       const totalExpenses =
         (next.commission || 0) + (next.loadingCharges || 0) + (next.tds || 0) +
         (next.goodsMamuli || 0) + (next.haltingCharge || 0);
       const finalPayable = balance - totalExpenses;
       return { ...next, netFreight, balance, totalExpenses, finalPayable };
     });
+    const col = FIELD_TO_COL[k as string];
+    if (col) setEditedFields((s) => new Set(s).add(col));
     setDirty(true);
   };
 
@@ -92,8 +144,27 @@ function TransportEditPage() {
     if (!form.dispatchDate) return toast.error("Dispatch date is required");
     setSaving(true);
     try {
+      // Value-based override detection: a field only becomes PERMANENTLY
+      // overridden if the user edited it AND its value actually changed from the
+      // originally loaded value. This guarantees:
+      //   - untouched fields are never marked overridden (so they keep syncing),
+      //   - auto-derived fields (netFreight/balance/totalExpenses/finalPayable)
+      //     are never frozen unless explicitly edited,
+      //   - previously overridden fields are always preserved by updateTransportEntry.
+      const original = originalRef.current;
+      const actualOverrides: string[] = [];
+      if (original) {
+        for (const [key, col] of Object.entries(FIELD_TO_COL)) {
+          if (!editedFields.has(col)) continue;
+          const before = (original as Record<string, unknown>)[key];
+          const after = (form as unknown as Record<string, unknown>)[key];
+          if (String(before ?? "") !== String(after ?? "")) actualOverrides.push(col);
+        }
+      } else {
+        actualOverrides.push(...Array.from(editedFields));
+      }
       // Writes ONLY to transport_list — the originating memo is never touched.
-      await updateTransportEntry(id, form);
+      await updateTransportEntry(id, form, actualOverrides);
       toast.success("Transport entry updated");
       setDirty(false);
       nav({ to: "/transport-list" });
@@ -172,13 +243,13 @@ function TransportEditPage() {
         <Section title="Goods Information">
           <Field label="Material" required><Input className="h-11" value={form.materialName} onChange={(e) => set("materialName", e.target.value)} /></Field>
           <Field label="Weight (tons)" required>
-            <Input className="h-11" type="number" step="0.01" value={form.weightTons ?? 0} onChange={(e) => setAndRecalc("weightTons", Number(e.target.value))} />
+            <NumericInput step="0.01" value={form.weightTons ?? 0} onValueChange={(v) => setAndRecalc("weightTons", v)} />
           </Field>
           <Field label="Rate/Ton (Transport) (₹)" required>
-            <Input className="h-11" type="number" value={form.ratePerTon ?? 0} onChange={(e) => setAndRecalc("ratePerTon", Number(e.target.value))} />
+            <NumericInput value={form.ratePerTon ?? 0} onValueChange={(v) => setAndRecalc("ratePerTon", v)} />
           </Field>
           <Field label="Unloading Date"><Input className="h-11" type="date" value={toInputDate(form.unloadingDate)} onChange={(e) => set("unloadingDate", fromInputDate(e.target.value))} /></Field>
-          <Field label="Halting Charge (₹)"><Input className="h-11" type="number" value={form.haltingCharge ?? 0} onChange={(e) => setAndRecalc("haltingCharge", Number(e.target.value))} /></Field>
+          <Field label="Halting Charge (₹)"><NumericInput value={form.haltingCharge ?? 0} onValueChange={(v) => setAndRecalc("haltingCharge", v)} /></Field>
           <Field label="LR Received Date"><Input className="h-11" type="date" value={toInputDate(form.lrReceivedDate)} onChange={(e) => set("lrReceivedDate", fromInputDate(e.target.value))} /></Field>
           <Field label="LR Submitted Date"><Input className="h-11" type="date" value={toInputDate(form.lrSubmittedDate)} onChange={(e) => set("lrSubmittedDate", fromInputDate(e.target.value))} /></Field>
           <div className="md:col-span-2 lg:col-span-3">
@@ -187,14 +258,14 @@ function TransportEditPage() {
         </Section>
 
         <Section title="Payment Information">
-          <Field label="Net Freight (₹)"><Input className="h-11" type="number" value={form.netFreight ?? 0} onChange={(e) => set("netFreight", Number(e.target.value))} /></Field>
-          <Field label="Advance (₹)"><Input className="h-11" type="number" value={form.advance ?? 0} onChange={(e) => setAndRecalc("advance", Number(e.target.value))} /></Field>
-          <Field label="Balance (₹)"><Input className="h-11" type="number" value={form.balance ?? 0} onChange={(e) => set("balance", Number(e.target.value))} /></Field>
-          <Field label="Commission (₹)"><Input className="h-11" type="number" value={form.commission ?? 0} onChange={(e) => setAndRecalc("commission", Number(e.target.value))} /></Field>
-          <Field label="Loading Charges (₹)"><Input className="h-11" type="number" value={form.loadingCharges ?? 0} onChange={(e) => setAndRecalc("loadingCharges", Number(e.target.value))} /></Field>
-          <Field label="TDS (₹)"><Input className="h-11" type="number" value={form.tds ?? 0} onChange={(e) => setAndRecalc("tds", Number(e.target.value))} /></Field>
-          <Field label="Goods Mamuli (₹)"><Input className="h-11" type="number" value={form.goodsMamuli ?? 0} onChange={(e) => setAndRecalc("goodsMamuli", Number(e.target.value))} /></Field>
-          <Field label="Total Expenses (₹)"><Input className="h-11" type="number" value={form.totalExpenses ?? 0} onChange={(e) => set("totalExpenses", Number(e.target.value))} /></Field>
+          <Field label="Net Freight (₹)"><NumericInput value={form.netFreight ?? 0} onValueChange={(v) => set("netFreight", v)} /></Field>
+          <Field label="Advance (₹)"><NumericInput value={form.advance ?? 0} onValueChange={(v) => setAndRecalc("advance", v)} /></Field>
+          <Field label="Balance (₹)"><NumericInput value={form.balance ?? 0} onValueChange={(v) => set("balance", v)} /></Field>
+          <Field label="Commission (₹)"><NumericInput value={form.commission ?? 0} onValueChange={(v) => setAndRecalc("commission", v)} /></Field>
+          <Field label="Loading Charges (₹)"><NumericInput value={form.loadingCharges ?? 0} onValueChange={(v) => setAndRecalc("loadingCharges", v)} /></Field>
+          <Field label="TDS (₹)"><NumericInput value={form.tds ?? 0} onValueChange={(v) => setAndRecalc("tds", v)} /></Field>
+          <Field label="Goods Mamuli (₹)"><NumericInput value={form.goodsMamuli ?? 0} onValueChange={(v) => setAndRecalc("goodsMamuli", v)} /></Field>
+          <Field label="Total Expenses (₹)"><NumericInput value={form.totalExpenses ?? 0} onValueChange={(v) => set("totalExpenses", v)} /></Field>
           <Field label="Paid By">
             <Select value={form.paidBy} onValueChange={(v) => set("paidBy", v)}>
               <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>
@@ -222,8 +293,8 @@ function TransportEditPage() {
         </Section>
 
         <Section title="Internal Financial Details (Admin Only)">
-          <Field label="Final Payable (₹)"><Input className="h-11" type="number" value={form.finalPayable ?? 0} onChange={(e) => set("finalPayable", Number(e.target.value))} /></Field>
-          <Field label="Final Payment Date"><Input className="h-11" type="date" value={toInputDate(form.finalPaymentDate)} onChange={(e) => set("finalPaymentDate", fromInputDate(e.target.value))} /></Field>
+          <Field label="Final Payable (₹)"><NumericInput value={form.finalPayable ?? 0} onValueChange={(v) => set("finalPayable", v)} /></Field>
+          <Field label="Final Payment Date"><Input className="h-11" type="date" value={toInputDate(form.finalPaymentDate)} onChange={(e) => set("finalPaymentDate", e.target.value ? new Date(e.target.value + "T00:00:00").toISOString() : "")} /></Field>
         </Section>
       </div>
 

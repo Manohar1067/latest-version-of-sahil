@@ -695,72 +695,386 @@ export async function getMemoHistory(memoId: string): Promise<MemoStatusHistory[
   return (data ?? []).map(rowToHistory);
 }
 
+// -------------------------- AUTO-CREATE HELPERS (PARTS 1 & 2) ---------------
+
+/** Find or create a consignee by name. Returns the consignee ID. */
+export async function ensureConsigneeExists(name: string): Promise<string | null> {
+  const trimmed = name?.trim();
+  if (!trimmed) return null;
+  const { data: existing } = await supabase
+    .from("consignees")
+    .select("id")
+    .ilike("company_name", trimmed)
+    .eq("is_deleted", false)
+    .maybeSingle();
+  if (existing) return existing.id;
+  const created = await createConsignee({
+    companyName: trimmed,
+    address: "",
+    contactPerson: "",
+    phone: "",
+    city: "",
+    state: "",
+    remarks: "",
+  });
+  return created.id;
+}
+
+/** Find or create a truck by number. Returns the truck ID. */
+export async function ensureTruckExists(
+  truckNumber: string,
+  driverName?: string,
+  ownerName?: string,
+  ownerPhone?: string,
+): Promise<string | null> {
+  const trimmed = truckNumber?.trim();
+  if (!trimmed) return null;
+  const { data: existing } = await supabase
+    .from("fleet_trucks")
+    .select("id")
+    .ilike("truck_number", trimmed)
+    .eq("is_deleted", false)
+    .maybeSingle();
+  if (existing) return existing.id;
+  const created = await createTruck({
+    truckNumber: trimmed,
+    driverName: driverName || "",
+    ownerName: ownerName || "",
+    ownerPhone: ownerPhone || "",
+    driverPhone: "",
+    insuranceExpiry: "",
+    remarks: "",
+  });
+  return created.id;
+}
+
+// -------------------------- TRANSPORT SYNC (PARTS 8, 9, 10) -----------------
+
+/** Memo input field → transport_list column name mapping for sync. */
+const SYNC_FIELD_MAP: Array<[keyof MemoInput, string]> = [
+  ["dispatchDate", "dispatch_date"],
+  ["fromLocation", "from_location"],
+  ["toLocation", "to_location"],
+  ["transportName", "transport_name"],
+  ["truckNumber", "truck_number"],
+  ["driverName", "driver_name"],
+  ["ownerName", "owner_name"],
+  ["ownerPhone", "owner_phone"],
+  ["consigneeName", "consignee_name"],
+  ["materialName", "material_name"],
+  ["weightTons", "weight_tons"],
+  ["ratePerTon", "rate_per_ton"],
+  ["netFreight", "net_freight"],
+  ["advance", "advance"],
+  ["balance", "balance"],
+  ["unloadingDate", "unloading_date"],
+  ["lrReceivedDate", "lr_received_date"],
+  ["lrSubmittedDate", "lr_submitted_date"],
+  ["description", "description"],
+  ["commission", "commission"],
+  ["loadingCharges", "loading_charges"],
+  ["tds", "tds"],
+  ["goodsMamuli", "goods_mamuli"],
+  ["totalExpenses", "total_expenses"],
+  ["paidBy", "paid_by"],
+  ["paymentMethod", "payment_method"],
+  ["finalPayable", "final_payable"],
+  ["finalPaymentDate", "final_payment_date"],
+  ["status", "status"],
+  ["remarks", "remarks"],
+];
+
+/**
+ * Sync a memo's fields to the corresponding transport_list entry,
+ * but ONLY fields that have NOT been independently overridden in Transport.
+ */
+export async function syncMemoToTransport(
+  memoId: string,
+  memoPatch: Partial<MemoInput>,
+): Promise<void> {
+  const memo = await getMemo(memoId);
+  if (!memo) return;
+  const entryNumber = memo.memoNumber;
+  let overridden: Record<string, boolean> = {};
+  try {
+    const { data: existing } = await supabase
+      .from("transport_list")
+      .select("id, overridden_fields")
+      .eq("entry_number", entryNumber)
+      .maybeSingle();
+    if (!existing) return;
+    if (typeof existing.overridden_fields === "object" && existing.overridden_fields !== null) {
+      overridden = existing.overridden_fields;
+    }
+    const patch: Record<string, unknown> = {};
+    for (const [appKey, col] of SYNC_FIELD_MAP) {
+      if (overridden[col]) continue;
+      const val = (memoPatch as Record<string, unknown>)[appKey];
+      if (val !== undefined) {
+        patch[col] = val === "" && col.endsWith("_date") ? null : val;
+      }
+    }
+    if (Object.keys(patch).length === 0) return;
+    await supabase.from("transport_list").update(patch).eq("id", existing.id);
+  } catch (e) {
+    // If overridden_fields column does not exist (legacy schema), fall back to
+    // updating ALL fields so the transport entry stays in sync with the memo.
+    console.warn("[syncMemoToTransport] ignoring override check", e);
+    const patch: Record<string, unknown> = {};
+    for (const [appKey, col] of SYNC_FIELD_MAP) {
+      const val = (memoPatch as Record<string, unknown>)[appKey];
+      if (val !== undefined) {
+        patch[col] = val === "" && col.endsWith("_date") ? null : val;
+      }
+    }
+    if (Object.keys(patch).length > 0) {
+      await supabase.from("transport_list").update(patch).eq("entry_number", entryNumber);
+    }
+  }
+}
+
 // -------------------------- DEV UTIL ----------------------------------------
-// ⚠️ Destructive — clears all real data. Use with care, not wired to any UI button.
+// ⚠️ Business data only — does NOT touch auth, profiles, or settings.
 
 export async function _resetStore(): Promise<void> {
-  console.warn("_resetStore: clearing all data from Supabase — this cannot be undone.");
+  console.warn("_resetStore: clearing business data from Supabase — this cannot be undone.");
   await supabase.from("memo_status_history").delete().not("id", "is", null);
   await supabase.from("audit_log").delete().not("id", "is", null);
+  await supabase.from("transport_list").delete().not("id", "is", null);
   await supabase.from("memos").delete().not("id", "is", null);
   await supabase.from("consignees").delete().not("id", "is", null);
   await supabase.from("fleet_trucks").delete().not("id", "is", null);
   await supabase.from("memo_counters").delete().not("year", "is", null);
 }
 
-// -------------------------- BACKUP / RESTORE --------------------------------
+// -------------------------- BACKUP / RESTORE (PARTS 11 & 12) ---------------
 
-export async function exportAllData(): Promise<string> {
-  const [trucks, consignees, memos, settings, auditData, historyData] = await Promise.all([
+export async function exportAllDataXlsx(): Promise<void> {
+  const XLSX = await import("xlsx");
+  const [trucks, consignees, memos, settings] = await Promise.all([
     getTrucks(),
     getConsignees(),
     getMemos({ includeDeleted: true }),
     getSettings(),
-    supabase.from("audit_log").select("*"),
-    supabase.from("memo_status_history").select("*"),
   ]);
-  const audit = (auditData.data ?? []).map(rowToAudit);
-  const history = (historyData.data ?? []).map(rowToHistory);
-  return JSON.stringify(
-    {
-      version: 2,
-      exportedAt: new Date().toISOString(),
-      trucks,
-      consignees,
-      memos,
-      history,
-      audit,
-      settings,
-    },
-    null,
-    2,
-  );
+
+  const wb = XLSX.utils.book_new();
+
+  const memoRows = memos.map((m) => ({
+    "Memo Number": m.memoNumber,
+    "Dispatch Date": m.dispatchDate,
+    "From": m.fromLocation,
+    "To": m.toLocation,
+    "Transport": m.transportName,
+    "Truck Number": m.truckNumber,
+    "Consignee": m.consigneeName,
+    "Driver": m.driverName,
+    "Owner": m.ownerName,
+    "Owner Phone": m.ownerPhone,
+    "Material": m.materialName,
+    "Weight (Tons)": m.weightTons,
+    "Rate/Ton": m.ratePerTon,
+    "Net Freight": m.netFreight,
+    "Advance": m.advance,
+    "Balance": m.balance,
+    "Commission": m.commission,
+    "Loading Charges": m.loadingCharges,
+    "TDS": m.tds,
+    "Goods Mamuli": m.goodsMamuli,
+    "Total Expenses": m.totalExpenses,
+    "Paid By": m.paidBy,
+    "Payment Method": m.paymentMethod,
+    "Final Payable": m.finalPayable,
+    "Final Payment Date": m.finalPaymentDate || "",
+    "Status": m.status,
+    "Remarks": m.remarks || "",
+    "Description": m.description || "",
+    "Unloading Date": m.unloadingDate || "",
+    "LR Received Date": m.lrReceivedDate || "",
+    "LR Submitted Date": m.lrSubmittedDate || "",
+    "Internal Notes": m.internalNotes || "",
+    "Is Draft": m.isDraft ? "Yes" : "No",
+    "Is Deleted": m.isDeleted ? "Yes" : "No",
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(memoRows), "Memos");
+
+  const truckRows = trucks.map((t) => ({
+    "Truck Number": t.truckNumber,
+    "Owner Name": t.ownerName,
+    "Owner Phone": t.ownerPhone,
+    "Driver Name": t.driverName,
+    "Driver Phone": t.driverPhone,
+    "Insurance Expiry": t.insuranceExpiry || "",
+    "Remarks": t.remarks || "",
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(truckRows), "Fleet");
+
+  const consigneeRows = consignees.map((c) => ({
+    "Company Name": c.companyName,
+    "Contact Person": c.contactPerson,
+    "Phone": c.phone,
+    "City": c.city,
+    "State": c.state,
+    "Address": c.address,
+    "Remarks": c.remarks || "",
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(consigneeRows), "Consignees");
+
+  const settingsRows = [{ ...settings }];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(settingsRows), "Settings");
+
+  const date = new Date().toISOString().slice(0, 10);
+  const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([wbout], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `Sahil_Road_Lines_Backup_${date}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-export async function importAllData(
-  json: string,
+export async function importAllDataXlsx(
+  file: File,
 ): Promise<{ trucks: number; consignees: number; memos: number }> {
-  const parsed = JSON.parse(json);
+  const XLSX = await import("xlsx");
+  const arrayBuffer = await file.arrayBuffer();
+  const wb = XLSX.read(arrayBuffer, { type: "array" });
+
   let tCount = 0,
     cCount = 0,
     mCount = 0;
 
-  for (const t of parsed.trucks ?? []) {
-    const { id, ...rest } = t;
-    const { error } = await supabase.from("fleet_trucks").upsert({ id, ...truckToRow(rest) });
-    if (!error) tCount++;
+  const sheets = wb.SheetNames.map((n) => n.toLowerCase());
+
+  const consigneeSheet = wb.Sheets[wb.SheetNames.find((n) => n.toLowerCase() === "consignees") ?? ""];
+  if (consigneeSheet) {
+    const rows: any[] = XLSX.utils.sheet_to_json(consigneeSheet);
+    for (const r of rows) {
+      const companyName = r["Company Name"] || r["companyName"] || "";
+      if (!companyName) continue;
+      const trimmed = String(companyName).trim();
+      const { data: existing } = await supabase
+        .from("consignees")
+        .select("id")
+        .ilike("company_name", trimmed)
+        .maybeSingle();
+      if (existing) {
+        await supabase.from("consignees").update({
+          contact_person: r["Contact Person"] || r["contactPerson"] || "",
+          phone: r["Phone"] || r["phone"] || "",
+          city: r["City"] || r["city"] || "",
+          state: r["State"] || r["state"] || "",
+          address: r["Address"] || r["address"] || "",
+          remarks: r["Remarks"] || r["remarks"] || "",
+        }).eq("id", existing.id);
+      } else {
+        await supabase.from("consignees").insert(consigneeToRow({
+          companyName: trimmed,
+          contactPerson: r["Contact Person"] || "",
+          phone: r["Phone"] || "",
+          city: r["City"] || "",
+          state: r["State"] || "",
+          address: r["Address"] || "",
+          remarks: r["Remarks"] || "",
+        }));
+      }
+      cCount++;
+    }
   }
-  for (const c of parsed.consignees ?? []) {
-    const { id, ...rest } = c;
-    const { error } = await supabase.from("consignees").upsert({ id, ...consigneeToRow(rest) });
-    if (!error) cCount++;
+
+  const fleetSheet = wb.Sheets[wb.SheetNames.find((n) => n.toLowerCase() === "fleet") ?? ""];
+  if (fleetSheet) {
+    const rows: any[] = XLSX.utils.sheet_to_json(fleetSheet);
+    for (const r of rows) {
+      const truckNumber = r["Truck Number"] || r["truckNumber"] || "";
+      if (!truckNumber) continue;
+      const trimmed = String(truckNumber).trim();
+      const { data: existing } = await supabase
+        .from("fleet_trucks")
+        .select("id")
+        .ilike("truck_number", trimmed)
+        .maybeSingle();
+      if (existing) {
+        await supabase.from("fleet_trucks").update(truckToRow({
+          truckNumber: trimmed,
+          ownerName: r["Owner Name"] || "",
+          ownerPhone: r["Owner Phone"] || "",
+          driverName: r["Driver Name"] || "",
+          driverPhone: r["Driver Phone"] || "",
+          insuranceExpiry: r["Insurance Expiry"] || "",
+          remarks: r["Remarks"] || "",
+        })).eq("id", existing.id);
+      } else {
+        await supabase.from("fleet_trucks").insert(truckToRow({
+          truckNumber: trimmed,
+          ownerName: r["Owner Name"] || "",
+          ownerPhone: r["Owner Phone"] || "",
+          driverName: r["Driver Name"] || "",
+          driverPhone: r["Driver Phone"] || "",
+          insuranceExpiry: r["Insurance Expiry"] || "",
+          remarks: r["Remarks"] || "",
+        }));
+      }
+      tCount++;
+    }
   }
-  for (const m of parsed.memos ?? []) {
-    const { id, memoNumber, ...rest } = m;
-    const { error } = await supabase
-      .from("memos")
-      .upsert({ id, memo_number: memoNumber, ...memoToRow(rest) });
-    if (!error) mCount++;
+
+  const memoSheet = wb.Sheets[wb.SheetNames.find((n) => n.toLowerCase() === "memos") ?? ""];
+  if (memoSheet) {
+    const rows: any[] = XLSX.utils.sheet_to_json(memoSheet);
+    for (const r of rows) {
+      const memoNumber = r["Memo Number"] || "";
+      if (!memoNumber) continue;
+      const { data: existing } = await supabase
+        .from("memos")
+        .select("id")
+        .eq("memo_number", memoNumber)
+        .maybeSingle();
+      const row = memoToRow({
+        dispatchDate: r["Dispatch Date"] || "",
+        fromLocation: r["From"] || "",
+        toLocation: r["To"] || "",
+        transportName: r["Transport"] || "",
+        truckNumber: r["Truck Number"] || "",
+        consigneeName: r["Consignee"] || "",
+        driverName: r["Driver"] || "",
+        ownerName: r["Owner"] || "",
+        ownerPhone: r["Owner Phone"] || "",
+        materialName: r["Material"] || "",
+        weightTons: Number(r["Weight (Tons)"] || 0),
+        ratePerTon: Number(r["Rate/Ton"] || 0),
+        netFreight: Number(r["Net Freight"] || 0),
+        advance: Number(r["Advance"] || 0),
+        balance: Number(r["Balance"] || 0),
+        commission: Number(r["Commission"] || 0),
+        loadingCharges: Number(r["Loading Charges"] || 0),
+        tds: Number(r["TDS"] || 0),
+        goodsMamuli: Number(r["Goods Mamuli"] || 0),
+        totalExpenses: Number(r["Total Expenses"] || 0),
+        paidBy: r["Paid By"] || "SRL",
+        paymentMethod: r["Payment Method"] || "Cash",
+        finalPayable: Number(r["Final Payable"] || 0),
+        finalPaymentDate: r["Final Payment Date"] || "",
+        status: r["Status"] || "Dispatched",
+        remarks: r["Remarks"] || "",
+        description: r["Description"] || "",
+        unloadingDate: r["Unloading Date"] || "",
+        lrReceivedDate: r["LR Received Date"] || "",
+        lrSubmittedDate: r["LR Submitted Date"] || "",
+        internalNotes: r["Internal Notes"] || "",
+        isDraft: r["Is Draft"] === "Yes",
+      });
+      if (existing) {
+        await supabase.from("memos").update(row).eq("id", existing.id);
+      } else {
+        await supabase.from("memos").insert({ ...row, memo_number: memoNumber, is_deleted: r["Is Deleted"] === "Yes" });
+      }
+      mCount++;
+    }
   }
+
   return { trucks: tCount, consignees: cCount, memos: mCount };
 }

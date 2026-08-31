@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import {
-  getMemos, getTrucks, getConsignees, deleteMemo, updateMemo,
+  getMemos, getTrucks, getConsignees, deleteMemo, updateMemo, syncMemoToTransport,
   ALL_MEMO_STATUSES, type Memo, type FleetTruck, type Consignee, type MemoStatus,
 } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -31,6 +31,8 @@ export const Route = createFileRoute("/register")({
 });
 
 function startOfMonth(d = new Date()) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function startOfWeek(d = new Date()) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - day); return x; }
+function endOfDay(d: Date) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
 
 // Register list supports per-column excel-style filters; each key names a column.
 type ColKey =
@@ -51,6 +53,8 @@ function RegisterPage() {
   const [truckId, setTruckId] = useState<string>("all");
   const [consigneeId, setConsigneeId] = useState<string>("all");
   const [paidBy, setPaidBy] = useState<string>("all");
+  const [customStart, setCustomStart] = useState<string>("");
+  const [customEnd, setCustomEnd] = useState<string>("");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -64,11 +68,28 @@ function RegisterPage() {
   const truckById = (id: string) => trucks?.find((t) => t.id === id);
   const consigneeById = (id: string) => consignees?.find((c) => c.id === id);
 
+  /** Resolve truck display: prefer linked truck, fall back to free-text truckNumber. */
+  const truckLabel = (r: Memo): string => {
+    const linked = r.truckId ? truckById(r.truckId)?.truckNumber : undefined;
+    return linked || r.truckNumber || "—";
+  };
+  /** Resolve consignee display: prefer linked consignee, fall back to free-text consigneeName. */
+  const consigneeLabel = (r: Memo): string => {
+    const linked = r.consigneeId ? consigneeById(r.consigneeId)?.companyName : undefined;
+    return linked || r.consigneeName || "—";
+  };
+
   const rowsPre = useMemo(() => {
     let rows = memos ?? [];
     const now = new Date();
     if (scope === "today") rows = rows.filter((x) => new Date(x.dispatchDate).toDateString() === now.toDateString());
     else if (scope === "month") rows = rows.filter((x) => new Date(x.dispatchDate) >= startOfMonth(now));
+    else if (scope === "week") {
+      const ws = startOfWeek(now);
+      const we = endOfDay(new Date(ws));
+      we.setDate(we.getDate() + 6);
+      rows = rows.filter((x) => { const d = new Date(x.dispatchDate); return d >= ws && d <= we; });
+    }
     else if (scope === "running") rows = rows.filter((x) => x.status === "Dispatched");
     else if (scope === "completed") rows = rows.filter((x) => x.status === "Completed");
     else if (scope === "pending") rows = rows.filter((x) => x.status === "Dispatched");
@@ -79,24 +100,27 @@ function RegisterPage() {
     if (truckId !== "all") rows = rows.filter((r) => r.truckId === truckId);
     if (consigneeId !== "all") rows = rows.filter((r) => r.consigneeId === consigneeId);
     if (paidBy !== "all") rows = rows.filter((r) => r.paidBy === paidBy);
+    if (customStart || customEnd) {
+      const cs = customStart ? new Date(customStart + "T00:00:00") : new Date("1970-01-01T00:00:00");
+      const ce = customEnd ? endOfDay(new Date(customEnd + "T00:00:00")) : endOfDay(new Date("9999-12-31T00:00:00"));
+      rows = rows.filter((r) => { const d = new Date(r.dispatchDate); return d >= cs && d <= ce; });
+    }
     if (query.trim()) {
       const q = query.toLowerCase();
       rows = rows.filter((r) => {
-        const tr = truckById(r.truckId);
-        const co = consigneeById(r.consigneeId);
-        return [r.memoNumber, tr?.truckNumber, r.driverName, r.transportName, co?.companyName, r.toLocation, r.materialName, r.status, r.remarks]
+        return [r.memoNumber, truckLabel(r), r.driverName, r.transportName, consigneeLabel(r), r.toLocation, r.materialName, r.status, r.remarks]
           .filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
       });
     }
     return rows;
-  }, [memos, trucks, consignees, query, status, truckId, consigneeId, paidBy, scope]);
+  }, [memos, trucks, consignees, query, status, truckId, consigneeId, paidBy, scope, customStart, customEnd]);
 
   // Value extractor per column, used for both column-filter menus and filtering.
   const colValue = (r: Memo, key: ColKey): string => {
     switch (key) {
       case "memoNumber": return r.memoNumber;
       case "dispatch": return formatDate(r.dispatchDate);
-      case "truck": return truckById(r.truckId)?.truckNumber || "—";
+      case "truck": return truckLabel(r);
       case "transport": return r.transportName || "—";
       case "destination": return r.toLocation || "—";
       case "rate": return String(r.ratePerTon ?? "");
@@ -134,6 +158,7 @@ function RegisterPage() {
 
   const resetFilters = () => {
     setQuery(""); setStatus("all"); setTruckId("all"); setConsigneeId("all"); setPaidBy("all"); setScope("all"); setPage(1);
+    setCustomStart(""); setCustomEnd("");
     setColFilters({});
   };
 
@@ -152,21 +177,21 @@ function RegisterPage() {
 
   const bulkStatus = async (s: MemoStatus) => {
     const ids = Array.from(selected);
-    for (const id of ids) await updateMemo(id, { status: s });
+    for (const id of ids) {
+      await updateMemo(id, { status: s });
+      await syncMemoToTransport(id, { status: s });
+    }
     toast.success(`Updated ${ids.length} memo(s) to ${s}`);
     setSelected(new Set());
   };
 
-  const toExportRows = (rows: Memo[]) => rows.map((r) => {
-    const tr = truckById(r.truckId);
-    const co = consigneeById(r.consigneeId);
-    return {
+  const toExportRows = (rows: Memo[]) => rows.map((r) => ({
       "Memo #": r.memoNumber,
       "Dispatch": formatDate(r.dispatchDate),
-      "Truck": tr?.truckNumber ?? "",
+      "Truck": truckLabel(r),
       "Transport": r.transportName,
       "Destination": r.toLocation,
-      "Consignee": co?.companyName ?? "",
+      "Consignee": consigneeLabel(r),
       "Driver": r.driverName,
       "Material": r.materialName,
       "Rate/Ton": r.ratePerTon,
@@ -181,8 +206,7 @@ function RegisterPage() {
       "Final Payment Date": formatDate(r.finalPaymentDate),
       "Status": r.status,
       "Remarks": r.remarks ?? "",
-    };
-  });
+    }));
 
   const doExport = (fmt: "xlsx" | "csv", onlySelected: boolean) => {
     const rows = onlySelected ? filtered.filter((r) => selected.has(r.id)) : filtered;
@@ -237,6 +261,7 @@ function RegisterPage() {
               <SelectContent>
                 <SelectItem value="all">All time</SelectItem>
                 <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="week">This Week</SelectItem>
                 <SelectItem value="month">Current Month</SelectItem>
                 <SelectItem value="running">Running</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
@@ -287,6 +312,19 @@ function RegisterPage() {
               </SelectContent>
             </Select>
           </div>
+          <div className="flex items-end gap-2">
+            <div>
+              <label className="section-title mb-1 block">From Date</label>
+              <Input type="date" className="h-11 w-[160px]" value={customStart} onChange={(e) => { setCustomStart(e.target.value); setPage(1); }} />
+            </div>
+            <div>
+              <label className="section-title mb-1 block">To Date</label>
+              <Input type="date" className="h-11 w-[160px]" value={customEnd} onChange={(e) => { setCustomEnd(e.target.value); setPage(1); }} />
+            </div>
+            {(customStart || customEnd) && (
+              <Button variant="ghost" onClick={() => { setCustomStart(""); setCustomEnd(""); setPage(1); }}>Clear</Button>
+            )}
+          </div>
           <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
           {selected.size > 0 && (
             <>
@@ -306,10 +344,10 @@ function RegisterPage() {
           type Col = { key: ColKey; label: string; align?: "left" | "right"; render: (r: Memo) => React.ReactNode };
           const cols: Col[] = [
             { key: "memoNumber", label: "Memo #", render: (r) => <span className="inline-flex items-center"><Link to="/memo/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.memoNumber}</Link>{r.isDraft && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Draft</span>}</span> },
-            { key: "dispatch", label: "Dispatch", render: (r) => <span className="whitespace-nowrap">{formatDate(r.dispatchDate)}</span> },
-            { key: "truck", label: "Truck", render: (r) => <span className="font-semibold whitespace-nowrap">{truckById(r.truckId)?.truckNumber ?? "—"}</span> },
-            { key: "transport", label: "Transport", render: (r) => r.transportName },
-            { key: "destination", label: "Destination", render: (r) => <span className="font-semibold">{r.toLocation}</span> },
+            { key: "dispatch", label: "Dispatch", render: (r) => <span className="whitespace-nowrap font-semibold text-blue-700">{formatDate(r.dispatchDate)}</span> },
+            { key: "truck", label: "Truck", render: (r) => <span className="font-bold whitespace-nowrap text-navy underline decoration-navy/30 underline-offset-2">{truckLabel(r)}</span> },
+            { key: "transport", label: "Transport", render: (r) => <span className="font-semibold text-navy">{r.transportName}</span> },
+            { key: "destination", label: "Destination", render: (r) => <span className="font-bold text-navy">{r.toLocation}</span> },
             { key: "rate", label: "Rate/Ton", align: "right", render: (r) => formatMoney(r.ratePerTon) },
             { key: "weight", label: "Weight", align: "right", render: (r) => r.weightTons },
             { key: "netFreight", label: "Net Freight", align: "right", render: (r) => formatMoney(r.netFreight) },

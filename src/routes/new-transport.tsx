@@ -1,13 +1,17 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
-import { getTrucks, getConsignees, type FleetTruck, type Consignee } from "@/lib/dataStore";
+import {
+  getTrucks, getConsignees, ensureConsigneeExists, ensureTruckExists,
+  type FleetTruck, type Consignee,
+} from "@/lib/dataStore";
 import {
   createTransportEntry, updateTransportEntry, getTransportEntry, peekNextTransportEntryNumber,
   ALL_TRANSPORT_STATUSES, type TransportStatus, type TransportEntryInput,
 } from "@/lib/transportListStore";
 import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -122,6 +126,13 @@ function NewTransportEntry() {
 
   const paidByOptions = useMemo(() => ["SRL", "KAREEM"], []);
 
+  /** PART 9: auto-complete when final payment date is set. */
+  useEffect(() => {
+    if (form.finalPaymentDate && form.status !== "Completed") {
+      setForm((f) => ({ ...f, status: "Completed" as TransportStatus }));
+    }
+  }, [form.finalPaymentDate]);
+
   const submit = async () => {
     if (!form.truckNumber) return toast.error("Truck is required");
     if (!form.consigneeName) return toast.error("Consignee is required");
@@ -130,6 +141,8 @@ function NewTransportEntry() {
     if (!form.ratePerTon) return toast.error("Rate/Ton (Transport) is required");
     if (!form.dispatchDate) return toast.error("Dispatch date is required");
     try {
+      await ensureConsigneeExists(form.consigneeName);
+      await ensureTruckExists(form.truckNumber, form.driverName, form.ownerName, form.ownerPhone);
       if (edit) {
         await updateTransportEntry(edit, form);
         toast.success("Transport entry updated");
@@ -213,10 +226,10 @@ function NewTransportEntry() {
 
         <Section title="Goods Information">
           <Field label="Material" required><Input className="h-11" value={form.materialName} onChange={(e) => set("materialName", e.target.value)} /></Field>
-          <Field label="Weight (tons)" required><Input className="h-11" type="number" step="0.01" value={form.weightTons || ""} onChange={(e) => set("weightTons", Number(e.target.value))} /></Field>
-          <Field label="Rate/Ton (Transport) (₹)" required><Input className="h-11" type="number" value={form.ratePerTon || ""} onChange={(e) => set("ratePerTon", Number(e.target.value))} /></Field>
+          <Field label="Weight (tons)" required><NumericInput step="0.01" value={form.weightTons || 0} onValueChange={(v) => set("weightTons", v)} /></Field>
+          <Field label="Rate/Ton (Transport) (₹)" required><NumericInput value={form.ratePerTon || 0} onValueChange={(v) => set("ratePerTon", v)} /></Field>
           <Field label="Unloading Date"><Input className="h-11" type="date" value={toInputDate(form.unloadingDate)} onChange={(e) => set("unloadingDate", fromInputDate(e.target.value))} /></Field>
-          <Field label="Halting Charge (₹)"><Input className="h-11" type="number" value={form.haltingCharge || 0} onChange={(e) => set("haltingCharge", Number(e.target.value))} /></Field>
+          <Field label="Halting Charge (₹)"><NumericInput value={form.haltingCharge || 0} onValueChange={(v) => set("haltingCharge", v)} /></Field>
           <Field label="LR Received Date"><Input className="h-11" type="date" value={toInputDate(form.lrReceivedDate)} onChange={(e) => set("lrReceivedDate", fromInputDate(e.target.value))} /></Field>
           <Field label="LR Submitted Date"><Input className="h-11" type="date" value={toInputDate(form.lrSubmittedDate)} onChange={(e) => set("lrSubmittedDate", fromInputDate(e.target.value))} /></Field>
           <div className="md:col-span-2 lg:col-span-3">
@@ -227,16 +240,16 @@ function NewTransportEntry() {
         <Section title="Payment Information">
           <Field label="Net Freight (₹)">
             <div className="flex gap-2">
-              <Input className="h-11" type="number" value={form.netFreight || 0} onChange={(e) => { setFreightOverride(true); set("netFreight", Number(e.target.value)); }} />
+              <NumericInput value={form.netFreight || 0} onValueChange={(v) => { setFreightOverride(true); set("netFreight", v); }} />
               {freightOverride && <Button variant="outline" onClick={() => setFreightOverride(false)}>Auto</Button>}
             </div>
           </Field>
-          <Field label="Advance (₹)"><Input className="h-11" type="number" value={form.advance || 0} onChange={(e) => set("advance", Number(e.target.value))} /></Field>
+          <Field label="Advance (₹)"><NumericInput value={form.advance || 0} onValueChange={(v) => set("advance", v)} /></Field>
           <Field label="Balance (₹)"><Input className="h-11" value={form.balance} readOnly /></Field>
-          <Field label="Commission (₹)"><Input className="h-11" type="number" value={form.commission || 0} onChange={(e) => set("commission", Number(e.target.value))} /></Field>
-          <Field label="Loading Charges (₹)"><Input className="h-11" type="number" value={form.loadingCharges || 0} onChange={(e) => set("loadingCharges", Number(e.target.value))} /></Field>
-          <Field label="TDS (₹)"><Input className="h-11" type="number" value={form.tds || 0} onChange={(e) => set("tds", Number(e.target.value))} /></Field>
-          <Field label="Goods Mamuli (₹)"><Input className="h-11" type="number" value={form.goodsMamuli || 0} onChange={(e) => set("goodsMamuli", Number(e.target.value))} /></Field>
+          <Field label="Commission (₹)"><NumericInput value={form.commission || 0} onValueChange={(v) => set("commission", v)} /></Field>
+          <Field label="Loading Charges (₹)"><NumericInput value={form.loadingCharges || 0} onValueChange={(v) => set("loadingCharges", v)} /></Field>
+          <Field label="TDS (₹)"><NumericInput value={form.tds || 0} onValueChange={(v) => set("tds", v)} /></Field>
+          <Field label="Goods Mamuli (₹)"><NumericInput value={form.goodsMamuli || 0} onValueChange={(v) => set("goodsMamuli", v)} /></Field>
           <Field label="Total Expenses (₹)"><Input className="h-11" value={form.totalExpenses} readOnly /></Field>
           <Field label="Paid By">
             <Select value={form.paidBy} onValueChange={(v) => set("paidBy", v)}>
@@ -262,7 +275,7 @@ function NewTransportEntry() {
         </Section>
 
         <Section title="Internal Financial Details (Admin Only)">
-          <Field label="Final Payable (₹)"><Input className="h-11" type="number" value={form.finalPayable || 0} onChange={(e) => set("finalPayable", Number(e.target.value))} /></Field>
+          <Field label="Final Payable (₹)"><NumericInput value={form.finalPayable || 0} onValueChange={(v) => set("finalPayable", v)} /></Field>
           <Field label="Final Payment Date"><Input className="h-11" type="date" value={toInputDate(form.finalPaymentDate)} onChange={(e) => set("finalPaymentDate", fromInputDate(e.target.value))} /></Field>
         </Section>
       </div>

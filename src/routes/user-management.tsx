@@ -139,16 +139,6 @@ function UserManagement() {
     }
   }
 
-  async function changeRole(u: UserRow, role: UserRole) {
-    const { error } = await supabase.from("profiles").update({ role }).eq("id", u.id);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    toast.success(`${u.name}'s role changed to ${role}`);
-    loadUsers();
-  }
-
   return (
     <AppShell
       title="User Management"
@@ -253,15 +243,10 @@ function UserManagement() {
                   <td className="text-muted-foreground">{u.email}</td>
                   <td className="text-muted-foreground">{u.phone ?? "—"}</td>
                   <td>
-                    <Select value={u.role} onValueChange={(v) => changeRole(u, v as UserRole)}>
-                      <SelectTrigger className="h-8 w-36"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Super Admin">Super Admin</SelectItem>
-                        <SelectItem value="Admin">Admin</SelectItem>
-                        <SelectItem value="Office Staff">Office Staff</SelectItem>
-                        <SelectItem value="Viewer">Viewer</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <span className={u.role === "Super Admin" ? "rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700" : "inline-flex items-center gap-1 text-sm font-medium text-foreground"}>
+                      {u.role}
+                      <span className="text-[11px] font-normal text-muted-foreground">(fixed)</span>
+                    </span>
                   </td>
                   <td>
                     <span className={u.active ? "text-green-600" : "text-red-600"}>
