@@ -2,12 +2,23 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/lib/AuthContext";
 import { supabase } from "@/lib/supabaseClient";
+import { FunctionsFetchError, FunctionsHttpError, FunctionsRelayError } from "@supabase/supabase-js";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import type { UserRole } from "@/lib/AuthContext";
 
@@ -26,7 +37,7 @@ interface UserRow {
 }
 
 function UserManagement() {
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -35,6 +46,8 @@ function UserManagement() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", phone: "", role: "Office Staff" as UserRole, pin: "" });
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   async function loadUsers() {
     setLoading(true);
@@ -125,17 +138,79 @@ function UserManagement() {
         body: { action: "reset_pin", targetAuthUserId: resetTarget.auth_user_id, newPin: resetPin },
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
-      if (error || data?.error) {
-        toast.error(data?.error ?? error?.message ?? "Failed to reset PIN");
+      if (error) {
+        // Classify the edge-function failure so the admin sees a useful,
+        // safe message instead of the bare "Failed to send a request to the
+        // Edge Function" (no secrets are ever surfaced).
+        if (error instanceof FunctionsHttpError) {
+          let serverMsg = `Reset PIN failed: Edge Function returned ${error.context.status}`;
+          try {
+            const body = await error.context.clone().json();
+            if (body?.error) serverMsg = `Reset PIN failed: ${body.error}`;
+          } catch {
+            /* non-JSON body — keep the status-based message */
+          }
+          toast.error(serverMsg);
+        } else if (error instanceof FunctionsRelayError) {
+          toast.error("Reset PIN failed: the request could not reach the Edge Function");
+        } else if (error instanceof FunctionsFetchError) {
+          toast.error(
+            "Reset PIN failed: could not reach the Edge Function (check the server/CORS or that the function is deployed)",
+          );
+        } else {
+          toast.error(`Reset PIN failed: ${error.message ?? "unknown error"}`);
+        }
+        return;
+      }
+      if (data?.error) {
+        toast.error(`Reset PIN failed: ${data.error}`);
         return;
       }
       toast.success(`PIN reset for ${resetTarget.name}`);
       setResetTarget(null);
       setResetPinValue("");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to reset PIN");
+      toast.error(e instanceof Error ? `Reset PIN failed: ${e.message}` : "Reset PIN failed");
     } finally {
       setResetting(false);
+    }
+  }
+
+  function requestDelete(u: UserRow) {
+    // Defense-in-depth: never allow a Super Admin to remove their own account.
+    if (session && u.auth_user_id === session.user.id) {
+      toast.error("You cannot delete your own account.");
+      return;
+    }
+    setDeleteTarget(u);
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        toast.error("Your session expired — please sign in again");
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke("create-user", {
+        method: "POST",
+        body: { action: "delete", targetAuthUserId: deleteTarget.auth_user_id },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (error || data?.error) {
+        toast.error(data?.error ?? error?.message ?? "Unable to delete user. Please try again.");
+        return;
+      }
+      toast.success("User deleted successfully.");
+      setDeleteTarget(null);
+      loadUsers();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Unable to delete user. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -261,6 +336,16 @@ function UserManagement() {
                       <Button variant="outline" size="sm" onClick={() => setResetTarget(u)}>
                         Reset PIN
                       </Button>
+                      {profile?.role === "Super Admin" && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => requestDelete(u)}
+                          disabled={deleting}
+                        >
+                          Delete
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -292,6 +377,44 @@ function UserManagement() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete User?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-1">
+              <div>
+                Name: <span className="font-semibold text-foreground">{deleteTarget?.name}</span>
+              </div>
+              <div>
+                Email: <span className="font-semibold text-foreground">{deleteTarget?.email}</span>
+              </div>
+              <div>
+                Role: <span className="font-semibold text-foreground">{deleteTarget?.role}</span>
+              </div>
+              <div className="pt-2">This action permanently removes this user account.</div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleDelete();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleting}
+            >
+              {deleting ? "Deleting..." : "Delete User"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }

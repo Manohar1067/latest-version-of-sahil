@@ -24,10 +24,8 @@ function ForgotPinPage() {
 
     setSending(true);
     try {
-      // Environment-aware redirect: uses the real origin the user is on
-      // (no hardcoded localhost:3000). Works for local dev on any port and
-      // for the production Vercel origin automatically.
-      const redirectTo = `${window.location.origin}/reset-pin`;
+      const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+      const redirectTo = `${appUrl}/reset-pin`;
       console.log("Forgot PIN — requesting recovery email for:", value, "redirectTo:", redirectTo);
 
       const { error: sendError } = await supabase.auth.resetPasswordForEmail(value, {

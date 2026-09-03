@@ -1,12 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  Outlet,
-  Link,
-  useLocation,
-  createRootRouteWithContext,
-  HeadContent,
-  Scripts,
-} from "@tanstack/react-router";
+import { Outlet, Link, useLocation, useNavigate, createRootRouteWithContext, HeadContent, Scripts } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { getSettings } from "@/lib/dataStore";
@@ -105,13 +98,34 @@ function RootComponent() {
 // tightened to require authentication, since an unauthenticated call would
 // otherwise fail before the login screen even had a chance to render.
 function AuthGate() {
-  const { session, loading } = useAuth();
+  const { session, loading, isRecovery, recoveryError } = useAuth();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
 
   // Public routes reachable without a session (self-service PIN recovery).
-  const isPublicAuthRoute =
-    pathname === "/forgot-pin" ||
-    pathname === "/reset-pin";
+  const isPublicAuthRoute = pathname === "/forgot-pin" || pathname === "/reset-pin";
+
+  // A PASSWORD_RECOVERY session is a temporary auth state that must be routed
+  // to /reset-pin — it must NEVER fall through to the normal Dashboard even
+  // though a Supabase session object exists. Recovery has priority over all
+  // authenticated routing. An invalid/expired recovery error in the URL hash
+  // is routed the same way so the user sees the "request a new link" page.
+  const recoveryActive = isRecovery || !!recoveryError;
+
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.log("[gate] pathname:", pathname,
+      "loading:", loading,
+      "session:", session ? "present" : "none",
+      "isRecovery:", isRecovery,
+      "recoveryError:", recoveryError?.code ?? null);
+  }
+
+  useEffect(() => {
+    if (recoveryActive && !isPublicAuthRoute) {
+      navigate({ to: "/reset-pin" });
+    }
+  }, [recoveryActive, isPublicAuthRoute, navigate]);
 
   useEffect(() => {
     if (!session) return;
@@ -129,6 +143,27 @@ function AuthGate() {
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-sm text-muted-foreground">Loading...</div>
       </div>
+    );
+  }
+
+  // During recovery (valid session or invalid/expired link), route to
+  // /reset-pin.  If we're already on a public auth route, render the outlet
+  // normally.  If we're on any other route (e.g. "/" because Supabase
+  // redirected to the site root), show a loading state while the navigation
+  // effect above pushes to /reset-pin — never show the Dashboard.
+  if (recoveryActive) {
+    if (!isPublicAuthRoute) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="text-sm text-muted-foreground">Redirecting to password reset...</div>
+        </div>
+      );
+    }
+    return (
+      <>
+        <Outlet />
+        <Toaster richColors position="top-right" />
+      </>
     );
   }
 

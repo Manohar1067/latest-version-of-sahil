@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
+import { useAuth } from "@/lib/AuthContext";
 
 export const Route = createFileRoute("/reset-pin")({
   component: ResetPinPage,
@@ -15,6 +16,7 @@ export const Route = createFileRoute("/reset-pin")({
 function ResetPinPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
+  const { session, isRecovery, recoveryError } = useAuth();
   const [ready, setReady] = useState(false);
   const [checking, setChecking] = useState(true);
   const [newPin, setNewPin] = useState("");
@@ -23,8 +25,12 @@ function ResetPinPage() {
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const linkErrorCode = search.error_code?.toLowerCase();
-  const linkErrorDescription = search.error_description;
+  // Supabase puts recovery errors in the URL HASH (#error_code=...), which
+  // TanStack Search doesn't see. Read from both the query params (iframe/query
+  // flows) and the global recoveryError parsed from the hash.
+  const linkErrorCode =
+    (search.error_code ?? recoveryError?.code ?? "").toLowerCase();
+  const linkErrorDescription = search.error_description ?? recoveryError?.description;
 
   useEffect(() => {
     let cancelled = false;
@@ -43,8 +49,8 @@ function ResetPinPage() {
     // the URL hash during startup and persists the recovery session. Because
     // the root AuthGate only mounts this page after that startup completes, the
     // one-shot PASSWORD_RECOVERY notification may already have fired before we
-    // subscribed — so a session present on this route is the valid recovery
-    // session; show the "set new PIN" form directly.
+    // subscribed — use the global recovery state or a present session to show
+    // the "set new PIN" form directly.
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (cancelled) return;
@@ -59,6 +65,20 @@ function ResetPinPage() {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  // Keep in sync with the global recovery state in case PASSWORD_RECOVERY
+  // fired before this page mounted.
+  useEffect(() => {
+    if (isRecovery || session?.user) {
+      setReady(true);
+      setChecking(false);
+    }
+    if (!isRecovery && !session && !recoveryError && !search.error_code) {
+      // No recovery session and no recovery error on this page: there is
+      // nothing to validate, so keep the form hidden behind the invalid-page.
+      setReady(false);
+    }
+  }, [isRecovery, session, recoveryError, search.error_code]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

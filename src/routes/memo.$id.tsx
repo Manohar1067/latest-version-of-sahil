@@ -4,7 +4,7 @@ import { useStoreData } from "@/lib/useStore";
 import { getMemo, getTruck, getConsignee, getSettings, type Memo, type FleetTruck, type Consignee, type Settings } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { Printer, Download, ArrowLeft, Pencil, ChevronDown, AlertTriangle, Phone, Mail, MapPin, Share2 } from "lucide-react";
+import { Printer, Download, ArrowLeft, Pencil, ChevronDown, Phone, Mail, MapPin, Share2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
@@ -26,27 +26,27 @@ function SectionHead({ children }: { children: ReactNode }) {
   return (
     <div
       className="px-3 py-[3px]"
-      style={{ background: NAVY, color: "#fff", fontSize: "13px", fontWeight: 800, letterSpacing: "0.8px", textTransform: "uppercase" }}
+      style={{ background: NAVY, color: "#fff", fontSize: "12.5px", fontWeight: 900, letterSpacing: "0.6px", textTransform: "uppercase" }}
     >
       {children}
     </div>
   );
 }
 
-/** Label / value row: light grey label column, bold dynamic value. */
+/** Label / value row: two-column table with vertical divider. */
 function Row({ label, value, money, last }: { label: string; value: ReactNode; money?: boolean; last?: boolean }) {
   const empty = value === undefined || value === null || value === "";
   return (
     <div className="flex" style={{ borderBottom: last ? "none" : `1px solid ${LINE}` }}>
       <div
-        className="w-[44%] shrink-0 px-3 py-[4px]"
-        style={{ background: "#F5F6FA", borderRight: `1px solid ${LINE}`, fontSize: "12.5px", color: "#3A4356" }}
+        className="shrink-0 px-3 py-[5px]"
+        style={{ width: "40%", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, fontSize: "13px", fontWeight: 800, color: "#3A4356" }}
       >
         {label}
       </div>
       <div
-        className="flex-1 px-3 py-[4px]"
-        style={{ fontSize: money ? "14px" : "13.5px", fontWeight: 700, color: money ? NAVY : "#111" }}
+        className="flex-1 px-3 py-[5px]"
+        style={{ fontSize: "14px", fontWeight: 800, color: money ? NAVY : "#111" }}
       >
         {empty ? "—" : value}
       </div>
@@ -88,9 +88,21 @@ async function buildPdfBlob(el: HTMLElement) {
   const canvas = await renderCanvas(el);
   const { default: jsPDF } = await import("jspdf");
   const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-  const w = pdf.internal.pageSize.getWidth();
-  const h = pdf.internal.pageSize.getHeight();
-  pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, w, h);
+  const pageW = pdf.internal.pageSize.getWidth();   // 210mm
+  const pageH = pdf.internal.pageSize.getHeight();  // 297mm
+
+  // Scale the rendered receipt proportionally to fit EXACTLY inside ONE A4 page.
+  // This preserves the aspect ratio (no distortion), never overflows onto a
+  // second page, and never crops — any slack is centered on the page.
+  const imgW = canvas.width;
+  const imgH = canvas.height;
+  const ratio = Math.min(pageW / imgW, pageH / imgH);
+  const drawW = (imgW * ratio) * 0.985; // tiny safety margin so the border isn't clipped at the page edge
+  const drawH = imgH * ratio * 0.985;
+  const offsetX = (pageW - drawW) / 2;
+  const offsetY = (pageH - drawH) / 2;
+
+  pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", offsetX, offsetY, drawW, drawH);
   return pdf.output("blob");
 }
 async function buildImageBlob(el: HTMLElement): Promise<Blob> {
@@ -136,32 +148,25 @@ function SRLDiamond({ size = 76 }: { size?: number }) {
 }
 
 /**
- * The Goods Despatch Memo document.
+ * The Goods Despatch Memo receipt — faithful digital reproduction of the
+ * original physical Sahil Road Lines hard-copy memo.
  *
- * Redesigned to mirror the structure/visual organisation of the original
- * physical Sahil Road Lines Goods Despatch Memo:
- *   - strong company header with logo
- *   - memo number / date block
- *   - From / To
- *   - consignor / consignee
- *   - goods description, rate, weight
- *   - financial details
- *   - truck details
- *   - expenses
- *   - signatures (driver / office / company stamp)
- *   - terms & conditions
- *   - company footer
+ * Structure mirrors the original:
+ *   1. HEADER — logo | company identity | cell numbers
+ *   2. OFFICE ADDRESS line
+ *   3. MEMO TITLE — No. / GOODS DESPATCH MEMO / Date
+ *   4. MAIN DETAILS TABLE — From/To, G.C. No., Article, Owner, Driver,
+ *      Consignor, Consignee, Description, Rate, Weight
+ *   5. RED NOTICE BAR
+ *   6. FINANCIAL / TRUCK / EXPENSE AREA
+ *   7. DECLARATION
+ *   8. SIGNATURE — Driver on behalf of Owner
+ *   9. COMPANY SIGNATURE — For SAHIL ROAD LINES
+ *  10. BOTTOM WARNING
  *
- * ALL business values are dynamic (read from the memo/settings) — nothing is
- * hardcoded.
- *
- * Rendered ONLY so it can be lifted to a portal on <body> (see MemoView). Being
- * a direct child of <body> — outside #root and outside AppShell's flex/grid
- * layout tree — means no ancestor (ml-60 sidebar spacer, px-8 main padding,
- * max-w container, any transform/zoom/flex-shrink) can constrain or shrink it.
- * The single navy border IS the full 210mm x 297mm A4 canvas.
+ * ALL business values are dynamic. Nothing is hardcoded.
  */
-const ReceiptPage = forwardRef<
+export const ReceiptPage = forwardRef<
   HTMLDivElement,
   {
     memo: Memo;
@@ -171,14 +176,52 @@ const ReceiptPage = forwardRef<
     terms: string[];
   }
 >(function ReceiptPage({ memo, settings, truck, consignee, terms }, ref) {
-  /** Resolve truck number: prefer linked truck, fall back to free-text. */
   const truckNo = truck?.truckNumber || memo.truckNumber || "—";
-  /** Resolve consignee name: prefer linked consignee, fall back to free-text. */
   const consigneeName = consignee?.companyName || memo.consigneeName || "—";
   const logoEl = settings.logoUrl ? (
-    <img src={settings.logoUrl} className="h-[84px] w-auto max-w-[104px] object-contain" alt="Company logo" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.15))" }} />
+    <img src={settings.logoUrl} className="h-[72px] w-auto max-w-[100px] object-contain" alt="Company logo" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.15))" }} />
   ) : (
-    <SRLDiamond size={76} />
+    <SRLDiamond size={72} />
+  );
+
+  const FONT = "'Inter', 'Segoe UI', system-ui, Roboto, Arial, Helvetica, sans-serif";
+
+  const cell = (bBorder = true, bBot = true): React.CSSProperties => ({
+    boxSizing: "border-box",
+    borderRight: bBorder ? `1px solid ${NAVY}` : "none",
+    borderBottom: bBot ? `1px solid ${NAVY}` : "none",
+    padding: "4px 8px",
+    fontSize: "12.5px",
+    lineHeight: 1.25,
+  });
+  const cellLabel: React.CSSProperties = {
+    color: "#3A4356",
+    fontWeight: 900,
+    fontSize: "13.5px",
+    letterSpacing: "0.3px",
+    whiteSpace: "nowrap",
+  };
+  const cellValue: React.CSSProperties = { fontWeight: 800, color: "#111", fontSize: "14.5px" };
+  const cellHeading: React.CSSProperties = {
+    padding: "4px 8px",
+    fontSize: "12px",
+    fontWeight: 900,
+    color: "#0B2A55",
+    background: "#F5F6FA",
+    borderBottom: `1px solid ${NAVY}`,
+    letterSpacing: "0.6px",
+    textTransform: "uppercase" as const,
+  };
+
+  const detailRow = (label: string, value: ReactNode, opts: React.CSSProperties = {}) => (
+    <div style={{ ...cell(true, true), ...opts, display: "flex", alignItems: "stretch" }}>
+      <div style={{ width: "40%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+        <span style={cellLabel}>{label}</span>
+      </div>
+      <div style={{ flex: 1, padding: "5px 8px", display: "flex", alignItems: "center" }}>
+        <span style={{ ...cellValue, ...(opts.fontSize ? { fontSize: opts.fontSize } : {}) }}>{value}</span>
+      </div>
+    </div>
   );
 
   return (
@@ -189,219 +232,248 @@ const ReceiptPage = forwardRef<
         width: "794px",
         height: "1123px",
         boxSizing: "border-box",
-        padding: "24px",
+        padding: "12px",
         background: "#ffffff",
         color: "#000",
-        fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        fontFamily: FONT,
+        overflow: "hidden",
       }}
     >
-      {/* The visible receipt — the navy border lives HERE, inset ~6mm from the paper edge. */}
       <div
         className="print-receipt"
         style={{
           width: "100%",
-          height: "100%",
           boxSizing: "border-box",
           display: "flex",
           flexDirection: "column",
           background: "#ffffff",
           color: "#000",
-          border: `3px solid ${NAVY}`,
+          border: `2px solid ${NAVY}`,
           overflow: "visible",
         }}
       >
-      {/* ---------------- HEADER (logo | identity | memo meta) ---------------- */}
-      <div className="avoid-break flex items-stretch" style={{ borderBottom: `3px solid ${NAVY}`, background: `linear-gradient(180deg, #F2F5FA 0%, #ffffff 100%)` }}>
-        <div className="flex w-[130px] shrink-0 items-center justify-center px-2 py-[10px]">
+      {/* ====== 1. HEADER ====== */}
+      <div className="avoid-break flex items-stretch" style={{ borderBottom: `2px solid ${NAVY}` }}>
+        <div className="flex w-[112px] shrink-0 items-center justify-center px-2 py-[4px]">
           {logoEl}
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center px-3 py-[10px] text-center">
-          <div style={{ fontSize: "30px", fontWeight: 900, letterSpacing: "-0.3px", color: NAVY, lineHeight: 1.05 }}>
+        <div className="flex flex-1 flex-col items-center justify-center px-3 py-[4px] text-center">
+          <div style={{ fontSize: "34px", fontWeight: 900, color: NAVY, lineHeight: 1.05, letterSpacing: "-0.3px" }}>
             {settings.companyName || "SAHIL ROAD LINES"}
           </div>
-          <div style={{ fontSize: "14px", fontWeight: 700, color: RED, letterSpacing: "0.5px" }}>
-            Transport Contractors &amp; Commission Agents
+          <div style={{ fontSize: "14px", fontWeight: 800, color: RED, letterSpacing: "0.7px", marginTop: "1px" }}>
+            TRANSPORT CONTRACTORS &amp; COMMISSION AGENTS
           </div>
-          <div style={{ fontSize: "12px", lineHeight: 1.3, marginTop: "2px" }} className="text-neutral-800">
+          <div style={{ fontSize: "12.5px", lineHeight: 1.25, marginTop: "1px" }} className="text-neutral-700">
             {settings.address}
           </div>
-          <div style={{ fontSize: "12px", marginTop: "1px" }} className="text-neutral-800">
-            Ph: {settings.phone || "—"}
-            {settings.email ? `  ·  ${settings.email}` : ""}
-          </div>
-          <div style={{ fontSize: "11.5px", fontWeight: 700, color: NAVY, marginTop: "2px" }}>
+          {settings.phone && (
+            <div style={{ fontSize: "12px", marginTop: "1px", fontWeight: 600 }} className="text-neutral-700">
+              Ph: {settings.phone}
+            </div>
+          )}
+          <div style={{ fontSize: "12px", fontWeight: 700, color: NAVY, marginTop: "1px" }}>
             {settings.jurisdictionText || "Subject to Visakhapatnam Jurisdiction"}
           </div>
-          {settings.gst && (
-            <div style={{ fontSize: "11.5px" }} className="text-neutral-700">GSTIN: {settings.gst}</div>
-          )}
         </div>
+        {/* Cell numbers + GST — padded away from the extreme right border */}
         <div
-          className="flex w-[190px] shrink-0 flex-col justify-center gap-[6px] px-3 py-[10px]"
-          style={{ background: NAVY, color: "#fff", borderLeft: `3px solid ${NAVY}` }}
+          className="flex w-[166px] shrink-0 flex-col justify-center gap-[2px] px-4 py-[4px] text-right"
+          style={{ borderLeft: `1px solid ${NAVY}`, fontSize: "12px", lineHeight: 1.3 }}
         >
-          <div
-            className="rounded px-2 py-[5px] text-center"
-            style={{ background: RED, color: "#fff", fontSize: "16px", fontWeight: 800, letterSpacing: "0.5px" }}
-          >
-            GOODS DESPATCH
-          </div>
-          <div className="flex justify-between text-[13px]">
-            <span className="text-white/70">Memo No.</span>
-            <span className="font-extrabold text-white">{memo.memoNumber}</span>
-          </div>
-          <div className="flex justify-between text-[13px]">
-            <span className="text-white/70">Date</span>
-            <span className="font-semibold text-white">{formatDate(memo.dispatchDate)}</span>
-          </div>
+          {settings.gst && <div className="font-semibold text-neutral-700">GSTIN: {settings.gst}</div>}
+          {settings.email && <div className="text-neutral-600">{settings.email}</div>}
+          {settings.website && <div className="text-neutral-600">{settings.website}</div>}
         </div>
       </div>
 
-      {/* ---------------- ROUTE / FROM / TO ---------------- */}
-      <div className="avoid-break px-3 py-[6px] flex items-center justify-between" style={{ borderBottom: `2px solid ${NAVY}`, background: "#F5F6FA" }}>
-        <div className="flex items-center gap-2 text-[13.5px]">
-          <span className="text-neutral-500">From:</span>
-          <span className="font-bold" style={{ color: NAVY }}>{memo.fromLocation || "—"}</span>
+      {/* ====== 2. MEMO TITLE BAR ====== */}
+      <div className="avoid-break flex items-center justify-between" style={{ borderBottom: `2px solid ${NAVY}`, background: NAVY, color: "#fff", padding: "4px 14px" }}>
+        <div style={{ fontSize: "14px", fontWeight: 800 }}>
+          No. {memo.memoNumber}
         </div>
-        <div className="text-[20px] font-black" style={{ color: RED }}>→</div>
-        <div className="flex items-center gap-2 text-[13.5px]">
-          <span className="text-neutral-500">To / Destination:</span>
-          <span className="font-bold" style={{ color: NAVY }}>{memo.toLocation || "—"}</span>
+        <div style={{ fontSize: "20px", fontWeight: 900, letterSpacing: "2px", color: "#fff" }}>
+          GOODS DESPATCH MEMO
         </div>
-      </div>
-
-      {/* ---------------- CONSIGNOR / CONSIGNEE + TRUCK DETAILS ---------------- */}
-      <div className="avoid-break grid grid-cols-2" style={{ borderBottom: `2px solid ${NAVY}` }}>
-        <div style={{ borderRight: `2px solid ${NAVY}` }}>
-          <SectionHead>Consignor</SectionHead>
-          <Row label="Consignor" value={memo.fromLocation} />
-          <Row label="Transport Name" value={memo.transportName} />
-          <Row label="Material" value={memo.materialName} />
-          <Row label="Description" value={memo.description} />
-          <Row label="Rate / Ton" value={formatMoney(memo.ratePerTon)} money />
-          <Row label="Weight (Tons)" value={memo.weightTons} />
-          <Row label="Net Freight" value={formatMoney(memo.netFreight)} money />
-        </div>
-        <div>
-          <SectionHead>Consignee / Truck Details</SectionHead>
-          <Row label="Truck Number" value={truckNo} />
-          <Row label="Lorry Owner Name" value={memo.ownerName} />
-          <Row label="Driver Name" value={memo.driverName} />
-          <Row label="Owner Name" value={memo.ownerName} />
-          <Row label="Owner Phone" value={memo.ownerPhone} />
-          <Row label="Consignee" value={consigneeName} />
-          <Row label="Remarks" value={memo.remarks} last />
+        <div style={{ fontSize: "13px", fontWeight: 700 }}>
+          Date: {formatDate(memo.dispatchDate)}
         </div>
       </div>
 
-      {/* ---------------- FINANCIAL / FREIGHT DETAILS ---------------- */}
+      {/* ====== 3. MAIN DETAILS TABLE ====== */}
       <div className="avoid-break" style={{ borderBottom: `2px solid ${NAVY}` }}>
-        <SectionHead>Financial / Freight Details</SectionHead>
-        <div className="grid grid-cols-4">
-          {[
-            { label: "Rate / Ton", value: formatMoney(memo.ratePerTon), strong: true },
-            { label: "Weight", value: `${memo.weightTons ?? 0} T` },
-            { label: "Net Freight", value: formatMoney(memo.netFreight), strong: true },
-            { label: "Advance", value: formatMoney(memo.advance) },
-            { label: "Balance", value: formatMoney(memo.balance), strong: true },
-            { label: "Commission", value: formatMoney(memo.commission) },
-            { label: "Loading Charges", value: formatMoney(memo.loadingCharges) },
-            { label: "TDS", value: formatMoney(memo.tds) },
-            { label: "Goods Mamuli", value: formatMoney(memo.goodsMamuli) },
-            { label: "Total Expenses", value: formatMoney(memo.totalExpenses), strong: true },
-            { label: "Paid By", value: memo.paidBy || "—" },
-            { label: "Payment Mode", value: memo.paymentMethod || "—" },
-          ].map((c, i) => (
-            <div
-              key={c.label}
-              className="px-2.5 py-[4px]"
-              style={{
-                borderRight: (i + 1) % 4 === 0 ? "none" : `1px solid ${LINE}`,
-                borderBottom: i < 8 ? `1px solid ${LINE}` : "none",
-              }}
-            >
-              <div style={{ fontSize: "11px", color: "#5A637A", lineHeight: 1.15 }}>{c.label}</div>
-              <div style={{ fontSize: "13.5px", fontWeight: 700, color: c.strong ? RED : NAVY, lineHeight: 1.2 }}>
-                {c.value}
-              </div>
-            </div>
-          ))}
+        {/* From | value | To | value — side-by-side on one row */}
+        <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+          <div style={{ width: "20%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+            <span style={cellLabel}>From:</span>
+          </div>
+          <div style={{ width: "30%", padding: "5px 8px", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center", overflow: "hidden" }}>
+            <span style={cellValue}>{memo.fromLocation || "—"}</span>
+          </div>
+          <div style={{ width: "15%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+            <span style={cellLabel}>To:</span>
+          </div>
+          <div style={{ width: "35%", padding: "5px 8px", display: "flex", alignItems: "center", overflow: "hidden" }}>
+            <span style={cellValue}>{memo.toLocation || "—"}</span>
+          </div>
+        </div>
+        {detailRow("G.C. No.:", memo.gcNo || "—")}
+        {detailRow("Article:", memo.materialName || "—")}
+        {detailRow("Lorry Owner Name:", memo.ownerName || "—")}
+        {detailRow("Driver Name:", memo.driverName || "—")}
+        {detailRow("Consignor:", memo.fromLocation || "—")}
+        {detailRow("Consignee:", consigneeName)}
+        {detailRow("Description:", memo.description || "—")}
+        {/* Per Ton Rs. | value | Weight | value — side-by-side on one row */}
+        <div className="flex" style={{ borderBottom: `0px solid ${NAVY}` }}>
+          <div style={{ width: "25%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+            <span style={cellLabel}>Per Ton Rs.:</span>
+          </div>
+          <div style={{ width: "25%", padding: "5px 8px", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center", overflow: "hidden" }}>
+            <span style={cellValue}>{formatMoney(memo.ratePerTon)}</span>
+          </div>
+          <div style={{ width: "20%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+            <span style={cellLabel}>Weight:</span>
+          </div>
+          <div style={{ width: "30%", padding: "5px 8px", display: "flex", alignItems: "center", overflow: "hidden" }}>
+            <span style={cellValue}>{memo.weightTons ? `${memo.weightTons} T` : "—"}</span>
+          </div>
         </div>
       </div>
 
-      {/* ---------------- FINAL PAYABLE + PAYMENT INFO ---------------- */}
+      {/* ====== 4. RED NOTICE BAR ====== */}
+      <div className="avoid-break" style={{ borderBottom: `2px solid ${NAVY}`, background: "#C1121F", color: "#fff", padding: "5px 14px", textAlign: "center" }}>
+        <div style={{ fontSize: "13.5px", fontWeight: 900, letterSpacing: "0.6px" }}>
+          Goods Receipt should be arrived within 15 days
+        </div>
+      </div>
+
+      {/* ====== 5. FINANCIAL / TRUCK / EXPENSE AREA ====== */}
+      <div className="avoid-break" style={{ borderBottom: `2px solid ${NAVY}` }}>
+        <div className="grid grid-cols-3">
+          {/* LEFT: Financial summary */}
+          <div style={{ borderRight: `2px solid ${NAVY}` }}>
+            <div style={cellHeading}>Financial</div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Net Freight:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.netFreight)}</div>
+            </div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Total Hire:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.totalHire)}</div>
+            </div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Advance:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.advance)}</div>
+            </div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Balance:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.balance)}</div>
+            </div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Paid At:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{memo.paidAt || "—"}</div>
+            </div>
+          </div>
+
+          {/* CENTER: Truck No. */}
+          <div style={{ borderRight: `2px solid ${NAVY}` }}>
+            <div style={cellHeading}>Vehicle</div>
+            <div style={{ padding: "6px", textAlign: "center" }}>
+              <div style={{ fontSize: "13.5px", color: "#555", fontWeight: 900 }}>Truck No.:</div>
+              <div style={{ fontSize: "17px", fontWeight: 900, color: NAVY, marginTop: "2px" }}>{truckNo}</div>
+            </div>
+            <div style={{ padding: "4px 8px", borderTop: `1px solid ${NAVY}` }}>
+              <div style={{ fontSize: "13.5px", color: "#777", fontWeight: 900 }}>Transport:</div>
+              <div style={{ fontSize: "14.5px", fontWeight: 800 }}>{memo.transportName || "—"}</div>
+            </div>
+          </div>
+
+          {/* RIGHT: Expenses */}
+          <div>
+            <div style={cellHeading}>Expenses</div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Commission:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.commission)}</div>
+            </div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Loading:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.loadingCharges)}</div>
+            </div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>T.D.S.:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.tds)}</div>
+            </div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Local Driver / Guide:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.localDriverGuide)}</div>
+            </div>
+            <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Office Mamuli:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.goodsMamuli)}</div>
+            </div>
+            <div className="flex">
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13.5px" }}>Total Expenses:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 900, color: RED, fontSize: "14.5px" }}>{formatMoney(memo.totalExpenses)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ====== 6. FINAL PAYABLE BAR (prominent, but slightly smaller than the oversized version) ====== */}
       <div
-        className="avoid-break px-4 py-[4px] text-center"
-        style={{ background: "#FDECEE", borderBottom: `2px solid ${NAVY}` }}
+        className="avoid-break"
+        style={{ borderBottom: `2px solid ${NAVY}`, background: "#FDECEE", padding: "5px 14px", textAlign: "center" }}
       >
-        <div style={{ fontSize: "13px", fontWeight: 800, letterSpacing: "1.5px", color: NAVY }}>FINAL PAYABLE</div>
-        <div style={{ fontSize: "28px", fontWeight: 900, color: RED, lineHeight: 1.05 }}>
+        <div style={{ fontSize: "15px", fontWeight: 900, letterSpacing: "1.2px", color: NAVY }}>FINAL PAYABLE</div>
+        <div style={{ fontSize: "22px", fontWeight: 900, color: RED, lineHeight: 1.1, marginTop: "1px" }}>
           {formatMoney(memo.finalPayable)}
         </div>
-        <div style={{ fontSize: "12px", fontWeight: 600, color: NAVY }}>
+        <div style={{ fontSize: "11px", fontWeight: 600, color: NAVY, marginTop: "1px" }}>
           (Rupees {amountInWords(memo.finalPayable)} Only)
         </div>
-        <div
-          className="mt-[2px] inline-flex flex-wrap items-center justify-center gap-x-3 text-center"
-          style={{ fontSize: "11.5px", fontWeight: 700, color: NAVY }}
-        >
-          {memo.finalPaymentDate && (
-            <span>Final Payment Date: {formatDate(memo.finalPaymentDate)}</span>
-          )}
-          {memo.paidBy && <span>Paid By: {memo.paidBy}</span>}
-          {memo.paymentMethod && <span>Mode: {memo.paymentMethod}</span>}
+        <div style={{ fontSize: "10.5px", fontWeight: 700, color: NAVY, marginTop: "1px" }}>
+          {memo.finalPaymentDate && <span>Final Payment Date: {formatDate(memo.finalPaymentDate)}</span>}
+          {memo.paidBy && <span>  |  Paid By: {memo.paidBy}</span>}
+          {memo.paymentMethod && <span>  |  Mode: {memo.paymentMethod}</span>}
         </div>
       </div>
 
-      {/* ---------------- TERMS & CONDITIONS (fills remaining vertical space) ---------------- */}
-      <div className="avoid-break relative flex flex-1 flex-col px-4 pb-[6px] pt-[6px]" style={{ borderBottom: `2px solid ${NAVY}` }}>
-        <div className="mb-[4px] flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4" style={{ color: NAVY }} />
-          <span style={{ fontSize: "14px", fontWeight: 800, letterSpacing: "1px", color: NAVY }}>
-            TERMS &amp; CONDITIONS
-          </span>
+      {/* ====== 7. DECLARATION ====== */}
+      <div className="avoid-break" style={{ borderBottom: `1px solid ${NAVY}`, padding: "4px 14px" }}>
+        <div style={{ fontSize: "10.5px", lineHeight: 1.35, color: "#222" }}>
+          I agree with terms and conditions overleaf and abide by that Received the goods in good condition.
         </div>
-        <div style={{ height: "1px", background: NAVY }} className="mb-[5px]" />
-        <ol className="list-decimal pl-6 pr-1" style={{ fontSize: "12.5px", lineHeight: 1.5, wordBreak: "break-word", overflowWrap: "anywhere" }}>
-          {terms.length > 0 ? (
-            terms.map((t, i) => (
-              <li key={i} className="mb-[2px] text-neutral-900">{t}</li>
-            ))
-          ) : (
-            [
-              "Goods are dispatched at owner's risk.",
-              "Company is not responsible for leakage, breakage or shortage.",
-              "All disputes subject to Visakhapatnam jurisdiction only.",
-              "Freight to be paid within 15 days of delivery.",
-              "Detention charges applicable after 24 hours of unloading.",
-            ].map((t, i) => <li key={i} className="mb-[2px] text-neutral-900">{t}</li>)
-          )}
-        </ol>
       </div>
 
-      {/* ---------------- SIGNATURES ---------------- */}
-      <div className="avoid-break grid grid-cols-3 text-center">
-        {["Driver Signature", "Office Signature", "Company Stamp"].map((s, i) => (
-          <div key={s} className="px-4 pb-[7px] pt-[34px]" style={i < 2 ? { borderRight: `1px solid ${LINE}` } : undefined}>
-            <div style={{ borderTop: `1px solid ${NAVY}`, fontSize: "13px", fontWeight: 700, color: NAVY }} className="pt-[6px]">
-              {s}
-            </div>
-          </div>
-        ))}
+      {/* ====== 8. TERMS & CONDITIONS ====== */}
+      {terms.length > 0 && (
+        <div className="avoid-break" style={{ borderBottom: `1px solid ${NAVY}`, padding: "4px 14px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 900, color: NAVY, marginBottom: "1px", letterSpacing: "0.5px", textTransform: "uppercase" as const }}>Terms &amp; Conditions</div>
+          <ol className="list-decimal pl-5" style={{ fontSize: "10px", lineHeight: 1.25, color: "#333" }}>
+            {terms.map((t, i) => <li key={i} className="mb-0" style={{ marginBottom: 0 }}>{t}</li>)}
+          </ol>
+        </div>
+      )}
+
+      {/* ====== 9. SIGNATURES ====== */}
+      <div className="avoid-break flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
+        <div style={{ flex: 1, borderRight: `1px solid ${NAVY}`, padding: "4px 14px", textAlign: "center", minHeight: "55px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginTop: "18px" }}>Signature of the Driver</div>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#777" }}>on behalf of the Owner</div>
+        </div>
+        <div style={{ flex: 1, padding: "4px 14px", textAlign: "center", minHeight: "55px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginTop: "18px" }}>For <b style={{ color: NAVY, fontWeight: 800 }}>{settings.companyName || "SAHIL ROAD LINES"}</b></div>
+          <div style={{ fontSize: "10px", fontWeight: 600, color: "#777" }}>Authorised Signatory</div>
+        </div>
       </div>
 
-      {/* ---------------- FOOTER (inside the outer border) ---------------- */}
+      {/* ====== 10. BOTTOM WARNING ====== */}
       <div
-        className="flex items-center justify-center gap-x-3 px-2 py-[7px] text-center"
-        style={{ background: NAVY, color: "#fff", fontSize: "11.5px", lineHeight: 1.3, whiteSpace: "nowrap" }}
+        className="avoid-break"
+        style={{ background: NAVY, color: "#fff", padding: "4px 14px", textAlign: "center", fontSize: "10.5px", fontWeight: 900, letterSpacing: "0.3px" }}
       >
-        <span className="font-bold">{settings.companyName || "SAHIL ROAD LINES"}</span>
-        {settings.phone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{settings.phone}</span>}
-        {settings.email && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{settings.email}</span>}
-        {settings.gst && <span>GST: {settings.gst}</span>}
-        <span className="inline-flex items-center gap-1">
-          <MapPin className="h-3 w-3" />{settings.jurisdictionText || "Subject to Visakhapatnam Jurisdiction"}
-        </span>
+        Return payment will not get without this Receipt and any other particulars
       </div>
       </div>
     </div>
@@ -628,7 +700,7 @@ function MemoView() {
             margin: 0 !important;
             padding: 0 !important;
             box-sizing: border-box !important;
-            overflow: visible !important;
+            overflow: hidden !important;
           }
 
           .print-only .print-area {
@@ -636,10 +708,10 @@ function MemoView() {
             height: 100% !important;
             box-sizing: border-box !important;
             margin: 0 !important;
-            padding: 24px !important;
+            padding: 12px !important;
             box-shadow: none !important;
             border-radius: 0 !important;
-            overflow: visible !important;
+            overflow: hidden !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }

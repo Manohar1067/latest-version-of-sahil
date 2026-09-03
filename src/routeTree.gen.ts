@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as UserManagementRouteImport } from './routes/user-management'
 import { Route as TrashRouteImport } from './routes/trash'
 import { Route as TransportListRouteImport } from './routes/transport-list'
+import { Route as TestReceiptRouteImport } from './routes/test-receipt'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ResetPinRouteImport } from './routes/reset-pin'
 import { Route as ReportsRouteImport } from './routes/reports'
@@ -41,6 +42,11 @@ const TrashRoute = TrashRouteImport.update({
 const TransportListRoute = TransportListRouteImport.update({
   id: '/transport-list',
   path: '/transport-list',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TestReceiptRoute = TestReceiptRouteImport.update({
+  id: '/test-receipt',
+  path: '/test-receipt',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof ReportsRoute
   '/reset-pin': typeof ResetPinRoute
   '/settings': typeof SettingsRoute
+  '/test-receipt': typeof TestReceiptRoute
   '/transport-list': typeof TransportListRoute
   '/trash': typeof TrashRoute
   '/user-management': typeof UserManagementRoute
@@ -151,6 +158,7 @@ export interface FileRoutesByTo {
   '/reports': typeof ReportsRoute
   '/reset-pin': typeof ResetPinRoute
   '/settings': typeof SettingsRoute
+  '/test-receipt': typeof TestReceiptRoute
   '/transport-list': typeof TransportListRoute
   '/trash': typeof TrashRoute
   '/user-management': typeof UserManagementRoute
@@ -172,6 +180,7 @@ export interface FileRoutesById {
   '/reports': typeof ReportsRoute
   '/reset-pin': typeof ResetPinRoute
   '/settings': typeof SettingsRoute
+  '/test-receipt': typeof TestReceiptRoute
   '/transport-list': typeof TransportListRoute
   '/trash': typeof TrashRoute
   '/user-management': typeof UserManagementRoute
@@ -194,6 +203,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/reset-pin'
     | '/settings'
+    | '/test-receipt'
     | '/transport-list'
     | '/trash'
     | '/user-management'
@@ -214,6 +224,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/reset-pin'
     | '/settings'
+    | '/test-receipt'
     | '/transport-list'
     | '/trash'
     | '/user-management'
@@ -234,6 +245,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/reset-pin'
     | '/settings'
+    | '/test-receipt'
     | '/transport-list'
     | '/trash'
     | '/user-management'
@@ -255,6 +267,7 @@ export interface RootRouteChildren {
   ReportsRoute: typeof ReportsRoute
   ResetPinRoute: typeof ResetPinRoute
   SettingsRoute: typeof SettingsRoute
+  TestReceiptRoute: typeof TestReceiptRoute
   TransportListRoute: typeof TransportListRoute
   TrashRoute: typeof TrashRoute
   UserManagementRoute: typeof UserManagementRoute
@@ -285,6 +298,13 @@ declare module '@tanstack/react-router' {
       path: '/transport-list'
       fullPath: '/transport-list'
       preLoaderRoute: typeof TransportListRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/test-receipt': {
+      id: '/test-receipt'
+      path: '/test-receipt'
+      fullPath: '/test-receipt'
+      preLoaderRoute: typeof TestReceiptRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -407,6 +427,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReportsRoute: ReportsRoute,
   ResetPinRoute: ResetPinRoute,
   SettingsRoute: SettingsRoute,
+  TestReceiptRoute: TestReceiptRoute,
   TransportListRoute: TransportListRoute,
   TrashRoute: TrashRoute,
   UserManagementRoute: UserManagementRoute,

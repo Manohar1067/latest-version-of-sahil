@@ -50,6 +50,10 @@ export interface TransportEntry {
   lrReceivedDate?: string;
   lrSubmittedDate?: string;
   description?: string;
+  gcNo?: string;
+  totalHire: number;
+  paidAt?: string;
+  localDriverGuide: number;
   commission: number;
   loadingCharges: number;
   tds: number;
@@ -95,6 +99,10 @@ const FIELD_MAP: Record<string, string> = {
   lrReceivedDate: "lr_received_date",
   lrSubmittedDate: "lr_submitted_date",
   description: "description",
+  gcNo: "gc_no",
+  totalHire: "total_hire",
+  paidAt: "paid_at",
+  localDriverGuide: "local_driver_guide",
   commission: "commission",
   loadingCharges: "loading_charges",
   tds: "tds",
@@ -135,6 +143,10 @@ const FIELD_MAP: Record<string, string> = {
     lrReceivedDate: r.lr_received_date ?? undefined,
     lrSubmittedDate: r.lr_submitted_date ?? undefined,
     description: r.description ?? undefined,
+    gcNo: r.gc_no ?? undefined,
+    totalHire: Number(r.total_hire ?? 0),
+    paidAt: r.paid_at ?? undefined,
+    localDriverGuide: r.local_driver_guide ?? undefined,
     commission: Number(r.commission ?? 0),
     loadingCharges: Number(r.loading_charges ?? 0),
     tds: Number(r.tds ?? 0),
@@ -326,6 +338,10 @@ export async function ensureTransportEntryForMemo(memo: Record<string, any>): Pr
     lrReceivedDate: memo.lrReceivedDate,
     lrSubmittedDate: memo.lrSubmittedDate,
     description: memo.description,
+    gcNo: memo.gcNo,
+    totalHire: memo.totalHire,
+    paidAt: memo.paidAt,
+    localDriverGuide: memo.localDriverGuide,
     commission: memo.commission,
     loadingCharges: memo.loadingCharges,
     tds: memo.tds,

@@ -94,6 +94,10 @@ export interface Memo {
   tds: number;
   goodsMamuli: number;
   totalExpenses: number;
+  gcNo?: string;
+  totalHire: number;
+  paidAt?: string;
+  localDriverGuide: number;
   paidBy: string;
   paymentMethod: string;
   finalPayable: number;
@@ -225,6 +229,10 @@ const MEMO_FIELD_MAP: Record<string, string> = {
   lrReceivedDate: "lr_received_date",
   lrSubmittedDate: "lr_submitted_date",
   description: "description",
+  gcNo: "gc_no",
+  totalHire: "total_hire",
+  paidAt: "paid_at",
+  localDriverGuide: "local_driver_guide",
   advance: "advance",
   balance: "balance",
   commission: "commission",
@@ -267,6 +275,10 @@ function rowToMemo(r: any): Memo {
     lrReceivedDate: r.lr_received_date ?? undefined,
     lrSubmittedDate: r.lr_submitted_date ?? undefined,
     description: r.description ?? undefined,
+    gcNo: r.gc_no ?? undefined,
+    totalHire: Number(r.total_hire ?? 0),
+    paidAt: r.paid_at ?? undefined,
+    localDriverGuide: r.local_driver_guide ?? undefined,
     advance: Number(r.advance ?? 0),
     balance: Number(r.balance ?? 0),
     commission: Number(r.commission ?? 0),
@@ -771,6 +783,10 @@ const SYNC_FIELD_MAP: Array<[keyof MemoInput, string]> = [
   ["lrReceivedDate", "lr_received_date"],
   ["lrSubmittedDate", "lr_submitted_date"],
   ["description", "description"],
+  ["gcNo", "gc_no"],
+  ["totalHire", "total_hire"],
+  ["paidAt", "paid_at"],
+  ["localDriverGuide", "local_driver_guide"],
   ["commission", "commission"],
   ["loadingCharges", "loading_charges"],
   ["tds", "tds"],
@@ -875,6 +891,7 @@ export async function exportAllDataXlsx(): Promise<void> {
     "Weight (Tons)": m.weightTons,
     "Rate/Ton": m.ratePerTon,
     "Net Freight": m.netFreight,
+    "Total Hire": m.totalHire,
     "Advance": m.advance,
     "Balance": m.balance,
     "Commission": m.commission,
@@ -889,6 +906,9 @@ export async function exportAllDataXlsx(): Promise<void> {
     "Status": m.status,
     "Remarks": m.remarks || "",
     "Description": m.description || "",
+    "G.C. No.": m.gcNo || "",
+    "Paid At": m.paidAt || "",
+    "Local Driver / Guide": m.localDriverGuide || "",
     "Unloading Date": m.unloadingDate || "",
     "LR Received Date": m.lrReceivedDate || "",
     "LR Submitted Date": m.lrSubmittedDate || "",
@@ -1061,6 +1081,10 @@ export async function importAllDataXlsx(
         status: r["Status"] || "Dispatched",
         remarks: r["Remarks"] || "",
         description: r["Description"] || "",
+        gcNo: r["G.C. No."] || "",
+        totalHire: Number(r["Total Hire"] || 0),
+        paidAt: r["Paid At"] || "",
+        localDriverGuide: r["Local Driver / Guide"] || "",
         unloadingDate: r["Unloading Date"] || "",
         lrReceivedDate: r["LR Received Date"] || "",
         lrSubmittedDate: r["LR Submitted Date"] || "",

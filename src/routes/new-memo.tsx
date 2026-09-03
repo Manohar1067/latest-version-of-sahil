@@ -22,6 +22,17 @@ import { ensureTransportEntryForMemo } from "@/lib/transportListStore";
 /** localStorage key holding the in-progress (unsaved) New Memo form. */
 const DRAFT_CACHE_KEY = "srl:new-memo:in-progress";
 
+/**
+ * The unsaved-draft payload. The memo number is stored explicitly so that
+ * reopening the page restores the SAME working memo number instead of
+ * computing a new one. The memo counter is never advanced by merely opening
+ * the page or saving a draft — only by actually saving the memo (createMemo).
+ */
+type DraftCache = {
+  memoNumber: string;
+  form: MemoInput;
+};
+
 const CREATE_STATUSES: MemoStatus[] = ["Dispatched", "Delivered", "Payment Pending", "LR Received", "LR Submitted", "Completed"];
 
 type Search = { edit?: string };
@@ -62,17 +73,21 @@ const emptyForm = (): MemoInput => ({
   ownerName: "",
   ownerPhone: "",
   materialName: "",
+  gcNo: "",
   weightTons: 0,
   ratePerTon: 0,
   netFreight: 0,
+  totalHire: 0,
   advance: 0,
   balance: 0,
   commission: 0,
   loadingCharges: 0,
   tds: 0,
   goodsMamuli: 0,
+  localDriverGuide: 0,
   totalExpenses: 0,
   paidBy: "SRL",
+  paidAt: "",
   paymentMethod: "Cash",
   finalPayable: 0,
   status: "Dispatched",
@@ -92,30 +107,54 @@ function NewMemo() {
   const [freightOverride, setFreightOverride] = useState(false);
 
   useEffect(() => {
-    peekNextMemoNumber().then(setNextNum);
     if (!edit) {
-      // Restore any in-progress form the user left behind.
+      // Restore any in-progress form the user left behind, INCLUDING its memo
+      // number. Opening the page must not consume or regenerate the counter.
+      let draft: DraftCache | null = null;
       try {
         const cached = localStorage.getItem(DRAFT_CACHE_KEY);
         if (cached) {
-          const parsed = JSON.parse(cached) as MemoInput;
-          setForm({ ...emptyForm(), ...parsed });
-          toast.info("Restored your unsaved memo");
+          const parsed = JSON.parse(cached) as Partial<DraftCache>;
+          if (parsed && typeof parsed === "object" && parsed.form) {
+            draft = { memoNumber: parsed.memoNumber ?? "", form: parsed.form };
+          } else if (parsed && typeof parsed === "object" && (parsed as MemoInput).dispatchDate) {
+            // Legacy bare-form cache (no memo number stored). Restore the data
+            // and fall through to peeking the next number for the preview.
+            const legacy = parsed as MemoInput;
+            const memoNumber = (parsed as Record<string, unknown>).memoNumber as string | undefined;
+            draft = { memoNumber: memoNumber ?? "", form: legacy };
+          }
         }
       } catch {
         localStorage.removeItem(DRAFT_CACHE_KEY);
       }
-    }
-    if (edit) {
-      getMemo(edit).then((m) => {
-        if (m) {
-          const { id, memoNumber, isDeleted, createdAt, updatedAt, deletedAt, ...rest } = m;
-          void id; void memoNumber; void isDeleted; void createdAt; void updatedAt; void deletedAt;
-          setForm(rest);
-          setNextNum(memoNumber);
+
+      if (draft && draft.form) {
+        setForm({ ...emptyForm(), ...draft.form });
+        if (draft.memoNumber) {
+          setNextNum(draft.memoNumber);
+        } else {
+          peekNextMemoNumber().then(setNextNum);
         }
-      });
+        toast.info("Restored your unsaved memo");
+      } else {
+        // Fresh start — show the next number as a PREVIEW only. peekNextMemoNumber
+        // reads the counter and does NOT increment/reserve it; the permanent
+        // increment happens solely in createMemo() at save time.
+        peekNextMemoNumber().then(setNextNum);
+      }
+      return;
     }
+
+    // Edit mode: keep the existing memo number — never generate/increment.
+    getMemo(edit).then((m) => {
+      if (m) {
+        const { id, memoNumber, isDeleted, createdAt, updatedAt, deletedAt, ...rest } = m;
+        void id; void memoNumber; void isDeleted; void createdAt; void updatedAt; void deletedAt;
+        setForm(rest);
+        setNextNum(memoNumber);
+      }
+    });
   }, [edit]);
 
   // auto-calc
@@ -123,19 +162,23 @@ function NewMemo() {
     setForm((f) => {
       const netFreight = freightOverride ? f.netFreight : Math.round((f.weightTons || 0) * (f.ratePerTon || 0));
       const balance = netFreight - (f.advance || 0);
-      const totalExpenses = (f.commission || 0) + (f.loadingCharges || 0) + (f.goodsMamuli || 0) + (f.tds || 0);
+      const totalExpenses = (f.commission || 0) + (f.loadingCharges || 0) + (f.goodsMamuli || 0) + (f.tds || 0) + (f.localDriverGuide || 0);
       const finalPayable = balance - totalExpenses;
-      return { ...f, netFreight, balance, totalExpenses, finalPayable };
+      const totalHire = f.totalHire || netFreight;
+      return { ...f, netFreight, balance, totalExpenses, finalPayable, totalHire };
     });
-  }, [form.weightTons, form.ratePerTon, form.advance, form.commission, form.loadingCharges, form.goodsMamuli, form.tds, freightOverride]);
+  }, [form.weightTons, form.ratePerTon, form.advance, form.commission, form.loadingCharges, form.goodsMamuli, form.tds, form.localDriverGuide, freightOverride]);
 
-  // Continuously cache the in-progress form (new memos only).
+  // Continuously cache the in-progress form (new memos only), including the
+  // working memo number so reopening restores the same number.
   useEffect(() => {
     if (edit || !dirty) return;
+    if (!nextNum) return; // wait until the preview memo number is resolved
     try {
-      localStorage.setItem(DRAFT_CACHE_KEY, JSON.stringify(form));
+      const cache: DraftCache = { memoNumber: nextNum, form };
+      localStorage.setItem(DRAFT_CACHE_KEY, JSON.stringify(cache));
     } catch { /* quota — ignore */ }
-  }, [form, dirty, edit]);
+  }, [form, nextNum, dirty, edit]);
 
   // PART 9: Auto-complete memo when final payment date is set.
   useEffect(() => {
@@ -230,6 +273,7 @@ function NewMemo() {
               createLabel="Use"
             />
           </Field>
+          <Field label="G.C. No."><Input className="h-11" value={form.gcNo || ""} onChange={(e) => set("gcNo", e.target.value)} /></Field>
           <Field label="Consignee" required>
             <Combobox
               options={(consignees ?? []).map((c) => ({ value: c.companyName, label: c.companyName, keywords: `${c.city} ${c.contactPerson}` }))}
@@ -263,7 +307,7 @@ function NewMemo() {
         </Section>
 
         <Section title="Goods Information">
-          <Field label="Material" required><Input className="h-11" value={form.materialName} onChange={(e) => set("materialName", e.target.value)} /></Field>
+          <Field label="Article" required><Input className="h-11" value={form.materialName} onChange={(e) => set("materialName", e.target.value)} /></Field>
           <Field label="Weight (tons)" required><NumericInput step="0.01" value={form.weightTons || 0} onValueChange={(v) => set("weightTons", v)} /></Field>
           <Field label="Rate / Ton (₹)" required><NumericInput value={form.ratePerTon || 0} onValueChange={(v) => set("ratePerTon", v)} /></Field>
           <Field label="Unloading Date"><Input className="h-11" type="date" value={toInputDate(form.unloadingDate)} onChange={(e) => set("unloadingDate", fromInputDate(e.target.value))} /></Field>
@@ -281,13 +325,16 @@ function NewMemo() {
               {freightOverride && <Button variant="outline" onClick={() => setFreightOverride(false)}>Auto</Button>}
             </div>
           </Field>
+          <Field label="Total Hire (₹)"><NumericInput value={form.totalHire || 0} onValueChange={(v) => set("totalHire", v)} /></Field>
           <Field label="Advance (₹)"><NumericInput value={form.advance || 0} onValueChange={(v) => set("advance", v)} /></Field>
           <Field label="Balance (₹)"><Input className="h-11" value={form.balance} readOnly /></Field>
           <Field label="Commission (₹)"><NumericInput value={form.commission || 0} onValueChange={(v) => set("commission", v)} /></Field>
           <Field label="Loading Charges (₹)"><NumericInput value={form.loadingCharges || 0} onValueChange={(v) => set("loadingCharges", v)} /></Field>
           <Field label="TDS (₹)"><NumericInput value={form.tds || 0} onValueChange={(v) => set("tds", v)} /></Field>
-          <Field label="Goods Mamuli (₹)"><NumericInput value={form.goodsMamuli || 0} onValueChange={(v) => set("goodsMamuli", v)} /></Field>
+          <Field label="Local Driver / Guide (₹)"><NumericInput value={form.localDriverGuide || 0} onValueChange={(v) => set("localDriverGuide", v)} /></Field>
+          <Field label="Office Mamuli (₹)"><NumericInput value={form.goodsMamuli || 0} onValueChange={(v) => set("goodsMamuli", v)} /></Field>
           <Field label="Total Expenses (₹)"><Input className="h-11" value={form.totalExpenses} readOnly /></Field>
+          <Field label="Paid At"><Input className="h-11" value={form.paidAt || ""} onChange={(e) => set("paidAt", e.target.value)} placeholder="e.g. Visakhapatnam" /></Field>
           <Field label="Paid By">
             <Select value={form.paidBy} onValueChange={(v) => set("paidBy", v)}>
               <SelectTrigger className="h-11"><SelectValue /></SelectTrigger>

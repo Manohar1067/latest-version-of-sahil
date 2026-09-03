@@ -28,6 +28,8 @@ export const Route = createFileRoute("/transport-list")({
 });
 
 function startOfMonth(d = new Date()) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function startOfWeek(d = new Date()) { const x = new Date(d); const day = (x.getDay() + 6) % 7; x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - day); return x; }
+function endOfDay(d: Date) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
 
 type ColKey =
   | "entryNumber" | "dispatch" | "truck" | "transport" | "destination"
@@ -45,6 +47,8 @@ function TransportListPage() {
   const [consignee, setConsignee] = useState<string>("all");
   const [truck, setTruck] = useState<string>("all");
   const [scope, setScope] = useState<string>("all");
+  const [customStart, setCustomStart] = useState<string>("");
+  const [customEnd, setCustomEnd] = useState<string>("");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [confirmDel, setConfirmDel] = useState<TransportEntry | null>(null);
@@ -55,13 +59,27 @@ function TransportListPage() {
     const now = new Date();
     if (scope === "today") rows = rows.filter((x) => new Date(x.dispatchDate).toDateString() === now.toDateString());
     else if (scope === "month") rows = rows.filter((x) => new Date(x.dispatchDate) >= startOfMonth(now));
+    else if (scope === "week") {
+      const ws = startOfWeek(now);
+      const we = endOfDay(new Date(ws));
+      we.setDate(we.getDate() + 6);
+      rows = rows.filter((x) => { const d = new Date(x.dispatchDate); return d >= ws && d <= we; });
+    }
+    else if (scope === "running") rows = rows.filter((x) => x.status === "Dispatched");
     else if (scope === "completed") rows = rows.filter((x) => x.status === "Completed");
+    else if (scope === "pending") rows = rows.filter((x) => x.status === "Dispatched");
     else if (scope === "payment_pending") rows = rows.filter((x) => x.status === "Payment Pending");
+    else if (scope === "collection_due") rows = rows.filter((x) => x.status !== "Completed" && x.balance > 0);
 
     if (status !== "all") rows = rows.filter((r) => r.status === status);
     if (paidBy !== "all") rows = rows.filter((r) => r.paidBy === paidBy);
     if (consignee !== "all") rows = rows.filter((r) => (r.consigneeName || "—") === consignee);
     if (truck !== "all") rows = rows.filter((r) => (r.truckNumber || "—") === truck);
+    if (customStart || customEnd) {
+      const cs = customStart ? new Date(customStart + "T00:00:00") : new Date("1970-01-01T00:00:00");
+      const ce = customEnd ? endOfDay(new Date(customEnd + "T00:00:00")) : endOfDay(new Date("9999-12-31T00:00:00"));
+      rows = rows.filter((r) => { const d = new Date(r.dispatchDate); return d >= cs && d <= ce; });
+    }
     if (query.trim()) {
       const q = query.toLowerCase();
       rows = rows.filter((r) =>
@@ -70,7 +88,7 @@ function TransportListPage() {
       );
     }
     return rows;
-  }, [entries, query, status, paidBy, consignee, truck, scope]);
+  }, [entries, query, status, paidBy, consignee, truck, scope, customStart, customEnd]);
 
   const consigneeOptions = useMemo(
     () => Array.from(new Set((entries ?? []).map((e) => e.consigneeName || "—"))).sort(),
@@ -120,6 +138,7 @@ function TransportListPage() {
 
   const resetFilters = () => {
     setQuery(""); setStatus("all"); setPaidBy("all"); setConsignee("all"); setTruck("all"); setScope("all"); setPage(1); setColFilters({});
+    setCustomStart(""); setCustomEnd("");
   };
 
   const toExportRows = (rows: TransportEntry[]) => rows.map((r) => ({
@@ -224,9 +243,13 @@ function TransportListPage() {
               <SelectContent>
                 <SelectItem value="all">All time</SelectItem>
                 <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="week">This Week</SelectItem>
                 <SelectItem value="month">Current Month</SelectItem>
+                <SelectItem value="running">Running</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="pending">Pending Deliveries</SelectItem>
                 <SelectItem value="payment_pending">Payment Pending</SelectItem>
+                <SelectItem value="collection_due">Collection Due</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -270,6 +293,19 @@ function TransportListPage() {
                 <SelectItem value="KAREEM">Kareem</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex items-end gap-2">
+            <div>
+              <label className="section-title mb-1 block">From Date</label>
+              <Input type="date" className="h-11 w-[160px]" value={customStart} onChange={(e) => { setCustomStart(e.target.value); setPage(1); }} />
+            </div>
+            <div>
+              <label className="section-title mb-1 block">To Date</label>
+              <Input type="date" className="h-11 w-[160px]" value={customEnd} onChange={(e) => { setCustomEnd(e.target.value); setPage(1); }} />
+            </div>
+            {(customStart || customEnd) && (
+              <Button variant="ghost" onClick={() => { setCustomStart(""); setCustomEnd(""); setPage(1); }}>Clear</Button>
+            )}
           </div>
           <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
         </div>

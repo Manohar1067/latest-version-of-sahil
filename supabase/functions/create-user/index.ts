@@ -99,6 +99,50 @@ serve(async (req) => {
       return json({ success: true }, 200, req);
     }
 
+    if (action === "delete") {
+      const { targetAuthUserId } = body;
+      if (!targetAuthUserId) {
+        return json({ error: "Missing target user" }, 400, req);
+      }
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(targetAuthUserId)) {
+        return json({ error: "Invalid target user identifier" }, 400, req);
+      }
+
+      // A Super Admin must never delete their own account.
+      if (targetAuthUserId === callerUser.user.id) {
+        return json({ error: "You cannot delete your own account." }, 400, req);
+      }
+
+      // Verify the target Auth user actually exists before attempting deletion.
+      const { data: existingUser, error: findErr } = await adminClient.auth.admin.getUserById(
+        targetAuthUserId,
+      );
+      if (findErr || !existingUser?.user) {
+        return json({ error: "User not found" }, 404, req);
+      }
+
+      // Delete the Auth user FIRST: this is the authoritative step that makes
+      // the account unable to authenticate. Any profile delete after this can
+      // never resurrect the account, so there is no failure mode where the
+      // account still works but its profile is gone.
+      const { error: deleteAuthErr } = await adminClient.auth.admin.deleteUser(targetAuthUserId);
+      if (deleteAuthErr) {
+        return json({ error: "Unable to delete user. Please try again." }, 400, req);
+      }
+
+      // Clean up the application-level profile record. If profiles.auth_user_id
+      // is declared with ON DELETE CASCADE, the row is already removed above and
+      // this is a no-op; if it is not (orphaned row), this removes it. Failure
+      // here must not surface auth-deletion details to the caller.
+      try {
+        await adminClient.from("profiles").delete().eq("auth_user_id", targetAuthUserId);
+      } catch {
+        // best-effort cleanup only; auth user is already deleted
+      }
+
+      return json({ success: true }, 200, req);
+    }
+
     // action === "create"
     const { name, email, phone, role, pin } = body;
 
