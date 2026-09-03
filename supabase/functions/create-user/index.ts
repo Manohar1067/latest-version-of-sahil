@@ -16,7 +16,15 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 // headers. Without these headers the request never reaches the function and
 // the client reports "Failed to send a request to the Edge Function".
 const ALLOWED_ORIGINS = [
+  // Production
   "https://sahils-dispatch-desk.vercel.app",
+  // Local development. The Lovable-compatible dev server uses an 808x port
+  // (http://localhost:8080, falling back to 8081/… when the primary is taken),
+  // so the CORS allow-list must include the ports the browser actually sends.
+  "http://localhost:8080",
+  "http://localhost:8081",
+  "http://127.0.0.1:8080",
+  "http://127.0.0.1:8081",
   "http://localhost:3000",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
