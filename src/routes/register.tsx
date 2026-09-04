@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, Pencil, Printer, Trash2, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -45,6 +46,8 @@ type ColKey =
 function RegisterPage() {
   const { f } = Route.useSearch();
   const nav = useNavigate();
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const { data: memos } = useStoreData<Memo[]>(() => getMemos(), []);
   const { data: trucks } = useStoreData<FleetTruck[]>(() => getTrucks(), []);
   const { data: consignees } = useStoreData<Consignee[]>(() => getConsignees(), []);
@@ -230,22 +233,24 @@ function RegisterPage() {
       breadcrumb="Home / Register List"
       actions={
         <>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline"><Download className="mr-1 h-4 w-4" />Export</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => doExport("xlsx", false)}>Excel (.xlsx) — all filtered</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => doExport("csv", false)}>CSV — all filtered</DropdownMenuItem>
-              {selected.size > 0 && (
-                <>
-                  <DropdownMenuItem onClick={() => doExport("xlsx", true)}>Excel — {selected.size} selected</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => doExport("csv", true)}>CSV — {selected.size} selected</DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button onClick={() => nav({ to: "/new-memo" })}>+ New Memo</Button>
+          {admin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline"><Download className="mr-1 h-4 w-4" />Export</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => doExport("xlsx", false)}>Excel (.xlsx) — all filtered</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => doExport("csv", false)}>CSV — all filtered</DropdownMenuItem>
+                {selected.size > 0 && (
+                  <>
+                    <DropdownMenuItem onClick={() => doExport("xlsx", true)}>Excel — {selected.size} selected</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => doExport("csv", true)}>CSV — {selected.size} selected</DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {admin && <Button onClick={() => nav({ to: "/new-memo" })}>+ New Memo</Button>}
         </>
       }
     >
@@ -341,7 +346,7 @@ function RegisterPage() {
             )}
           </div>
           <Button variant="outline" onClick={resetFilters}>Reset filters</Button>
-          {selected.size > 0 && (
+          {admin && selected.size > 0 && (
             <>
               <Select onValueChange={(v) => bulkStatus(v as MemoStatus)}>
                 <SelectTrigger className="h-11 min-w-[200px]"><SelectValue placeholder={`Set status for ${selected.size}…`} /></SelectTrigger>
@@ -381,7 +386,8 @@ function RegisterPage() {
               <table className="w-full min-w-[1700px] text-left">
                 <thead className="border-b bg-muted/40">
                   <tr className="text-xs uppercase tracking-wider text-muted-foreground">
-                    <th className="w-8 px-3 py-3"><Checkbox checked={pageRows.length > 0 && selected.size === pageRows.length} onCheckedChange={toggleAll} /></th>
+                    {admin && <th className="w-8 px-3 py-3"><Checkbox checked={pageRows.length > 0 && selected.size === pageRows.length} onCheckedChange={toggleAll} /></th>}
+                    {!admin && <th className="w-8 px-3 py-3" />}
                     {cols.map((c) => (
                       <th key={c.key} className={`px-3 py-3 ${c.align === "right" ? "text-right" : ""}`}>
                         <span className="inline-flex items-center">
@@ -406,22 +412,27 @@ function RegisterPage() {
                   )}
                   {pageRows.map((r) => (
                     <tr key={r.id} className="border-b hover:bg-muted/30">
-                      <td className="px-3 py-3">
-                        <Checkbox checked={selected.has(r.id)} onCheckedChange={(v) => {
-                          const next = new Set(selected); if (v) next.add(r.id); else next.delete(r.id); setSelected(next);
-                        }} />
-                      </td>
+                      {admin && (
+                        <td className="px-3 py-3">
+                          <Checkbox checked={selected.has(r.id)} onCheckedChange={(v) => {
+                            const next = new Set(selected); if (v) next.add(r.id); else next.delete(r.id); setSelected(next);
+                          }} />
+                        </td>
+                      )}
+                      {!admin && <td className="px-3 py-3" />}
                       {cols.map((c) => (
                         <td key={c.key} className={`px-3 py-3 ${c.align === "right" ? "text-right" : ""}`}>{c.render(r)}</td>
                       ))}
                       <td className="sticky right-0 z-10 bg-background px-3 py-3 shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">
                         <div className="flex justify-end gap-1">
                           <Link to="/memo/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button></Link>
-                          <Link to="/new-memo" search={{ edit: r.id } as never}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>
+                          {admin && <Link to="/new-memo" search={{ edit: r.id } as never}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>}
                           <Link to="/memo/$id" params={{ id: r.id }} search={{ print: 1 } as never}><Button size="icon" variant="ghost"><Printer className="h-4 w-4" /></Button></Link>
-                          <Button size="icon" variant="ghost" onClick={() => setConfirmDel(r)}>
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
+                          {admin && (
+                            <Button size="icon" variant="ghost" onClick={() => setConfirmDel(r)}>
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>

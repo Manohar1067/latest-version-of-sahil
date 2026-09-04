@@ -13,7 +13,17 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { supabase, capturedHash } from "./supabaseClient";
 import type { Session } from "@supabase/supabase-js";
 
-export type UserRole = "Super Admin" | "Admin" | "Office Staff" | "Viewer";
+export type UserRole = "Super Admin" | "Viewer";
+
+/** Type guard — true only for the Super Admin role. */
+export function isSuperAdmin(profile: { role: UserRole } | null | undefined): boolean {
+  return profile?.role === "Super Admin";
+}
+
+/** Type guard — true only for the Viewer (read-only) role. */
+export function isViewer(profile: { role: UserRole } | null | undefined): boolean {
+  return profile?.role === "Viewer";
+}
 
 export interface Profile {
   id: string;

@@ -26,6 +26,8 @@ export const Route = createFileRoute("/user-management")({
   component: UserManagement,
 });
 
+const VALID_ROLES: UserRole[] = ["Super Admin", "Viewer"];
+
 interface UserRow {
   id: string;
   auth_user_id: string;
@@ -44,7 +46,7 @@ function UserManagement() {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "Office Staff" as UserRole, pin: "" });
+  const [form, setForm] = useState({ name: "", email: "", phone: "", role: "Viewer" as UserRole, pin: "" });
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -99,7 +101,7 @@ function UserManagement() {
       }
       toast.success(`User "${form.name}" created`);
       setOpen(false);
-      setForm({ name: "", email: "", phone: "", role: "Office Staff", pin: "" });
+      setForm({ name: "", email: "", phone: "", role: "Viewer", pin: "" });
       loadUsers();
     } finally {
       setSaving(false);
@@ -250,8 +252,6 @@ function UserManagement() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Super Admin">Super Admin</SelectItem>
-                    <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="Office Staff">Office Staff</SelectItem>
                     <SelectItem value="Viewer">Viewer</SelectItem>
                   </SelectContent>
                 </Select>
@@ -279,10 +279,7 @@ function UserManagement() {
             <SelectTrigger className="w-40"><SelectValue placeholder="All roles" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All roles</SelectItem>
-              <SelectItem value="Super Admin">Super Admin</SelectItem>
-              <SelectItem value="Admin">Admin</SelectItem>
-              <SelectItem value="Office Staff">Office Staff</SelectItem>
-              <SelectItem value="Viewer">Viewer</SelectItem>
+              {VALID_ROLES.map((r) => (<SelectItem key={r} value={r}>{r}</SelectItem>))}
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>

@@ -18,6 +18,7 @@ import { Combobox } from "@/components/Combobox";
 import { toInputDate, fromInputDate } from "@/lib/format";
 import { toast } from "sonner";
 import { ensureTransportEntryForMemo } from "@/lib/transportListStore";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 
 /** localStorage key holding the in-progress (unsaved) New Memo form. */
 const DRAFT_CACHE_KEY = "srl:new-memo:in-progress";
@@ -99,6 +100,8 @@ const emptyForm = (): MemoInput => ({
 function NewMemo() {
   const { edit } = Route.useSearch();
   const nav = useNavigate();
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const { data: trucks } = useStoreData<FleetTruck[]>(() => getTrucks(), []);
   const { data: consignees } = useStoreData<Consignee[]>(() => getConsignees(), []);
   const [nextNum, setNextNum] = useState("");
@@ -204,6 +207,10 @@ function NewMemo() {
   const paidByOptions = useMemo(() => ["SRL", "KAREEM"], []);
 
   const submit = async (draft = false) => {
+    if (!admin) {
+      toast.error("Viewers have read-only access. Only a Super Admin can create or edit memos.");
+      return;
+    }
     if (!form.truckNumber) return toast.error("Truck is required");
     if (!form.consigneeName) return toast.error("Consignee is required");
     if (!form.materialName) return toast.error("Material is required");
@@ -242,6 +249,16 @@ function NewMemo() {
       toast.error((e as Error).message);
     }
   };
+
+  if (!admin) {
+    return (
+      <AppShell title={edit ? "Edit Memo" : "New Memo"} breadcrumb={`Home / ${edit ? "Edit Memo" : "New Memo"}`}>
+        <div className="card-surface p-6 text-center text-muted-foreground">
+          Viewers have read-only access. Memos can only be created or edited by a Super Admin.
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title={edit ? "Edit Memo" : "New Memo"} breadcrumb={`Home / ${edit ? "Edit Memo" : "New Memo"}`}>

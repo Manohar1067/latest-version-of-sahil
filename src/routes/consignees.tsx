@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Pencil, Trash2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 
 export const Route = createFileRoute("/consignees")({ component: Page });
 
@@ -18,6 +19,8 @@ const empty: Omit<Consignee, "id"> = {
 };
 
 function Page() {
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const { data: rows } = useStoreData<Consignee[]>(() => getConsignees(), []);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -40,7 +43,7 @@ function Page() {
   };
 
   return (
-    <AppShell title="Consignee Management" breadcrumb="Home / Consignee Management" actions={<Button onClick={openNew}><Plus className="mr-1 h-4 w-4" />Add Consignee</Button>}>
+    <AppShell title="Consignee Management" breadcrumb="Home / Consignee Management" actions={admin ? <Button onClick={openNew}><Plus className="mr-1 h-4 w-4" />Add Consignee</Button> : undefined}>
       <div className="card-surface p-5">
         <div className="relative mb-4 max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -52,11 +55,11 @@ function Page() {
               <tr>
                 <th className="px-3 py-3">Company</th><th className="px-3 py-3">Contact</th><th className="px-3 py-3">Phone</th>
                 <th className="px-3 py-3">City</th><th className="px-3 py-3">State</th><th className="px-3 py-3">Address</th>
-                <th className="px-3 py-3 text-right">Actions</th>
+                {admin && <th className="px-3 py-3 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (<tr><td colSpan={7} className="py-16 text-center text-muted-foreground">No records found</td></tr>)}
+              {filtered.length === 0 && (<tr><td colSpan={admin ? 7 : 6} className="py-16 text-center text-muted-foreground">No records found</td></tr>)}
               {filtered.map((c) => (
                 <tr key={c.id} className="border-b hover:bg-muted/30">
                   <td className="px-3 py-3 font-semibold">{c.companyName}</td>
@@ -65,14 +68,16 @@ function Page() {
                   <td className="px-3 py-3">{c.city}</td>
                   <td className="px-3 py-3">{c.state}</td>
                   <td className="px-3 py-3 text-sm text-muted-foreground">{c.address}</td>
-                  <td className="px-3 py-3">
-                    <div className="flex justify-end gap-1">
-                      <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" onClick={async () => { if (confirm("Delete consignee?")) { await deleteConsignee(c.id); toast.success("Deleted"); } }}>
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </td>
+                  {admin && (
+                    <td className="px-3 py-3">
+                      <div className="flex justify-end gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" onClick={async () => { if (confirm("Delete consignee?")) { await deleteConsignee(c.id); toast.success("Deleted"); } }}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

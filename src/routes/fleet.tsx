@@ -15,6 +15,7 @@ import { formatDate } from "@/lib/format";
 import { useState } from "react";
 import { Pencil, Trash2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 
 export const Route = createFileRoute("/fleet")({ component: FleetPage });
 
@@ -24,6 +25,8 @@ const empty: Omit<FleetTruck, "id"> = {
 };
 
 function FleetPage() {
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const { data: trucks } = useStoreData<FleetTruck[]>(() => getTrucks(), []);
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
@@ -55,7 +58,7 @@ function FleetPage() {
   };
 
   return (
-    <AppShell title="Fleet Management" breadcrumb="Home / Fleet Management" actions={<Button onClick={openNew}><Plus className="mr-1 h-4 w-4" />Add Truck</Button>}>
+    <AppShell title="Fleet Management" breadcrumb="Home / Fleet Management" actions={admin ? <Button onClick={openNew}><Plus className="mr-1 h-4 w-4" />Add Truck</Button> : undefined}>
       <Tabs defaultValue="trucks">
         <TabsList>
           <TabsTrigger value="trucks">Trucks & Drivers</TabsTrigger>
@@ -73,11 +76,11 @@ function FleetPage() {
                     <th className="px-3 py-3">Truck #</th><th className="px-3 py-3">Owner</th><th className="px-3 py-3">Owner Phone</th>
                     <th className="px-3 py-3">Driver</th><th className="px-3 py-3">Driver Phone</th>
                     <th className="px-3 py-3">Insurance Expiry</th><th className="px-3 py-3">Remarks</th>
-                    <th className="px-3 py-3 text-right">Actions</th>
+                    {admin && <th className="px-3 py-3 text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.length === 0 && (<tr><td colSpan={8} className="py-16 text-center text-muted-foreground">No records found</td></tr>)}
+                  {filtered.length === 0 && (<tr><td colSpan={admin ? 8 : 7} className="py-16 text-center text-muted-foreground">No records found</td></tr>)}
                   {filtered.map((t) => (
                     <tr key={t.id} className="border-b hover:bg-muted/30">
                       <td className="px-3 py-3 font-semibold">{t.truckNumber}</td>
@@ -87,14 +90,16 @@ function FleetPage() {
                       <td className="px-3 py-3">{t.driverPhone}</td>
                       <td className="px-3 py-3">{formatDate(t.insuranceExpiry)}</td>
                       <td className="px-3 py-3 text-sm text-muted-foreground">{t.remarks || "—"}</td>
-                      <td className="px-3 py-3">
-                        <div className="flex justify-end gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => openEdit(t)}><Pencil className="h-4 w-4" /></Button>
-                          <Button size="icon" variant="ghost" onClick={() => setPendingDelete(t)}>
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </div>
-                      </td>
+                      {admin && (
+                        <td className="px-3 py-3">
+                          <div className="flex justify-end gap-1">
+                            <Button size="icon" variant="ghost" onClick={() => openEdit(t)}><Pencil className="h-4 w-4" /></Button>
+                            <Button size="icon" variant="ghost" onClick={() => setPendingDelete(t)}>
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

@@ -23,14 +23,14 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { LogOut, ChevronDown } from "lucide-react";
-import { useAuth } from "@/lib/AuthContext";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
 import { useCompanyLogo } from "@/lib/useCompanyLogo";
 
-const nav = [
+const allNav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/new-memo", label: "New Memo", icon: FilePlus2 },
+  { to: "/new-memo", label: "New Memo", icon: FilePlus2, adminOnly: true },
   { to: "/register", label: "Register List", icon: List },
   { to: "/transport-list", label: "Transport List", icon: ClipboardList },
   { to: "/fleet", label: "Fleet Management", icon: Truck },
@@ -38,8 +38,8 @@ const nav = [
   { to: "/reports", label: "Reports", icon: BarChart3 },
   { to: "/audit", label: "Audit Log", icon: ScrollText },
   { to: "/trash", label: "Trash", icon: Trash2 },
-  { to: "/settings", label: "Settings", icon: SettingsIcon },
-  { to: "/user-management", label: "User Management", icon: Users },
+  { to: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
+  { to: "/user-management", label: "User Management", icon: Users, adminOnly: true },
 ];
 
 export function AppShell({
@@ -59,6 +59,8 @@ export function AppShell({
   const { logout, profile } = useAuth();
   const userName = profile?.name ?? "User";
   const userRole = profile?.role ?? "";
+  const admin = isSuperAdmin(profile);
+  const nav = allNav.filter((n) => !n.adminOnly || admin);
   const initials = userName.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "U";
   const handleLogout = async () => {
     try { await logout(); toast.success("Logged out"); }

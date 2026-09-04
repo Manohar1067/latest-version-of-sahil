@@ -16,6 +16,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 
 export const Route = createFileRoute("/settings")({ component: SettingsPage });
 
@@ -41,6 +42,8 @@ function getLastBackup(): string | null {
 }
 
 function SettingsPage() {
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const { data } = useStoreData<Settings>(() => getSettings(), []);
   const [form, setForm] = useState<Settings | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -73,6 +76,16 @@ function SettingsPage() {
   useEffect(() => { setLastBackup(getLastBackup()); }, []);
 
   if (!form) return <AppShell title="Settings"><div className="card-surface p-8">Loading…</div></AppShell>;
+
+  if (!admin) {
+    return (
+      <AppShell title="Settings" breadcrumb="Home / Settings">
+        <div className="card-surface p-6 text-center text-muted-foreground">
+          Viewers have read-only access. Settings can only be modified by a Super Admin.
+        </div>
+      </AppShell>
+    );
+  }
 
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setForm((f) => ({ ...(f as Settings), [k]: v }));
 

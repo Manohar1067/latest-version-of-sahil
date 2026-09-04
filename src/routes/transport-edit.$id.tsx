@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Combobox } from "@/components/Combobox";
 import { toInputDate, fromInputDate } from "@/lib/format";
 import { toast } from "sonner";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 
 export const Route = createFileRoute("/transport-edit/$id")({
   component: TransportEditPage,
@@ -43,6 +44,8 @@ function Field({ label, children, required }: { label: string; children: React.R
 function TransportEditPage() {
   const { id } = Route.useParams();
   const nav = useNavigate();
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const { data: trucks } = useStoreData<FleetTruck[]>(() => getTrucks(), []);
   const { data: consignees } = useStoreData<Consignee[]>(() => getConsignees(), []);
   const [memoNumber, setMemoNumber] = useState("");
@@ -139,6 +142,10 @@ function TransportEditPage() {
 
   const submit = async () => {
     if (!form) return;
+    if (!admin) {
+      toast.error("Viewers have read-only access. Only a Super Admin can edit transport entries.");
+      return;
+    }
     if (!form.truckNumber) return toast.error("Truck is required");
     if (!form.materialName) return toast.error("Material is required");
     if (!form.dispatchDate) return toast.error("Dispatch date is required");
@@ -181,6 +188,16 @@ function TransportEditPage() {
 
   if (!form) {
     return <AppShell title="Edit Transport Entry"><div className="card-surface p-8 text-center">Loading…</div></AppShell>;
+  }
+
+  if (!admin) {
+    return (
+      <AppShell title={`Edit Transport Entry ${memoNumber}`} breadcrumb="Home / Transport List / Edit Entry">
+        <div className="card-surface p-6 text-center text-muted-foreground">
+          Viewers have read-only access. Transport entries can only be edited by a Super Admin.
+        </div>
+      </AppShell>
+    );
   }
 
   return (

@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from "sonner";
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 
 type S = { print?: number };
 export const Route = createFileRoute("/memo/$id")({
@@ -485,6 +486,8 @@ function MemoView() {
   const { id } = Route.useParams();
   const { print } = Route.useSearch();
   const nav = useNavigate();
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const { data: memo } = useStoreData<Memo | undefined>(() => getMemo(id), [id]);
   const { data: settings } = useStoreData<Settings>(() => getSettings(), []);
   const [truck, setTruck] = useState<FleetTruck | undefined>();
@@ -603,7 +606,7 @@ function MemoView() {
       actions={
         <>
           <Button variant="outline" onClick={() => nav({ to: "/register" })}><ArrowLeft className="mr-1 h-4 w-4" />Back</Button>
-          <Button variant="outline" onClick={() => nav({ to: "/new-memo", search: { edit: memo.id } as never })}><Pencil className="mr-1 h-4 w-4" />Edit</Button>
+          {admin && <Button variant="outline" onClick={() => nav({ to: "/new-memo", search: { edit: memo.id } as never })}><Pencil className="mr-1 h-4 w-4" />Edit</Button>}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline"><Download className="mr-1 h-4 w-4" />Download<ChevronDown className="ml-1 h-4 w-4" /></Button>

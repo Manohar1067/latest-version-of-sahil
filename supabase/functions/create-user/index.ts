@@ -150,6 +150,12 @@ serve(async (req) => {
       return json({ error: "Missing or invalid fields (PIN must be 6 digits)" }, 400, req);
     }
 
+    // Only "Super Admin" and "Viewer" are valid roles. Reject anything else so
+    // the legacy roles (Admin / Office Staff) can never be re-introduced.
+    if (role !== "Super Admin" && role !== "Viewer") {
+      return json({ error: "Invalid role. Only 'Super Admin' and 'Viewer' are allowed." }, 400, req);
+    }
+
     const { data: newAuthUser, error: createErr } = await adminClient.auth.admin.createUser({
       email,
       password: pin,

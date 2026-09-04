@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Combobox } from "@/components/Combobox";
 import { Eye, Pencil, Trash2, Search, Download } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -42,6 +43,8 @@ type ColKey =
 
 function TransportListPage() {
   const nav = useNavigate();
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const { data: entries, loading, error } = useTransportData<TransportEntry[]>(() => getTransportEntries(), []);
   const { data: trucks } = useStoreData<FleetTruck[]>(() => getTrucks(), []);
   const { data: consignees } = useStoreData<Consignee[]>(() => getConsignees(), []);
@@ -214,16 +217,18 @@ function TransportListPage() {
       breadcrumb="Home / Transport List"
       actions={
         <>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline"><Download className="mr-1 h-4 w-4" />Export</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => doExport("xlsx")}>Excel (.xlsx) — all filtered</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => doExport("csv")}>CSV — all filtered</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button onClick={() => nav({ to: "/new-transport" })}>+ New Transport Entry</Button>
+          {admin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline"><Download className="mr-1 h-4 w-4" />Export</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => doExport("xlsx")}>Excel (.xlsx) — all filtered</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => doExport("csv")}>CSV — all filtered</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {admin && <Button onClick={() => nav({ to: "/new-transport" })}>+ New Transport Entry</Button>}
         </>
       }
     >
@@ -341,7 +346,7 @@ function TransportListPage() {
                     </span>
                   </th>
                 ))}
-                <th className="sticky right-0 z-10 bg-muted px-3 py-3 text-right shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">Actions</th>
+                {admin && <th className="sticky right-0 z-10 bg-muted px-3 py-3 text-right shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -356,15 +361,17 @@ function TransportListPage() {
                   {cols.map((c) => (
                     <td key={c.key} className={`px-3 py-3 ${c.align === "right" ? "text-right" : ""}`}>{c.render(r)}</td>
                   ))}
-                  <td className="sticky right-0 z-10 bg-background px-3 py-3 shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">
-                    <div className="flex justify-end gap-1">
-                      <Link to="/transport/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button></Link>
-                      <Link to="/transport-edit/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>
-                      <Button size="icon" variant="ghost" onClick={() => setConfirmDel(r)}>
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </td>
+                  {admin && (
+                    <td className="sticky right-0 z-10 bg-background px-3 py-3 shadow-[-6px_0_6px_-6px_rgba(0,0,0,0.25)]">
+                      <div className="flex justify-end gap-1">
+                        <Link to="/transport/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button></Link>
+                        <Link to="/transport-edit/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><Pencil className="h-4 w-4" /></Button></Link>
+                        <Button size="icon" variant="ghost" onClick={() => setConfirmDel(r)}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

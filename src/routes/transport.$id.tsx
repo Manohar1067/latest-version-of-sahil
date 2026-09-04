@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -39,6 +40,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function TransportEntryView() {
   const { id } = Route.useParams();
   const nav = useNavigate();
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const [confirmDel, setConfirmDel] = useState(false);
   const { data: entry } = useTransportData<TransportEntry | undefined>(() => getTransportEntry(id), [id]);
 
@@ -56,12 +59,12 @@ function TransportEntryView() {
       breadcrumb="Home / Transport List / Entry"
       actions={
         <>
-          <Link to="/transport-edit/$id" params={{ id: entry.id }}>
+          {admin && <Link to="/transport-edit/$id" params={{ id: entry.id }}>
             <Button variant="outline"><Pencil className="mr-1 h-4 w-4" />Edit</Button>
-          </Link>
-          <Button variant="destructive" onClick={() => setConfirmDel(true)}>
+          </Link>}
+          {admin && <Button variant="destructive" onClick={() => setConfirmDel(true)}>
             <Trash2 className="mr-1 h-4 w-4" />Delete
-          </Button>
+          </Button>}
         </>
       }
     >

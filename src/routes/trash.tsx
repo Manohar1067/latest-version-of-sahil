@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -18,6 +19,8 @@ export const Route = createFileRoute("/trash")({ component: TrashPage });
 const KINDS = ["All", "Memo", "Transport", "Truck", "Consignee"] as const;
 
 function TrashPage() {
+  const { profile } = useAuth();
+  const admin = isSuperAdmin(profile);
   const { data, refresh } = useStoreData<TrashItem[]>(() => getAllTrashItems(), []);
   const all = data ?? [];
   const [tab, setTab] = useState<string>("All");
@@ -63,12 +66,12 @@ function TrashPage() {
                 <th className="px-3 py-3">Type</th>
                 <th className="px-3 py-3">Item</th>
                 <th className="px-3 py-3">Deleted At</th>
-                <th className="px-3 py-3 text-right">Actions</th>
+                {admin && <th className="px-3 py-3 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={4} className="py-16 text-center text-muted-foreground">Trash is empty</td></tr>
+                <tr><td colSpan={admin ? 4 : 3} className="py-16 text-center text-muted-foreground">Trash is empty</td></tr>
               )}
               {rows.map((r) => (
                 <tr key={`${r.kind}-${r.id}`} className="border-b">
@@ -77,16 +80,18 @@ function TrashPage() {
                   </td>
                   <td className="px-3 py-3 font-semibold">{r.label}</td>
                   <td className="px-3 py-3">{r.deletedAt ? formatDate(r.deletedAt) : "—"}</td>
-                  <td className="px-3 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => doRestore(r)}>
-                        <RotateCcw className="mr-1 h-4 w-4" />Restore
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => setPending(r)}>
-                        <Trash2 className="mr-1 h-4 w-4" />Delete forever
-                      </Button>
-                    </div>
-                  </td>
+                  {admin && (
+                    <td className="px-3 py-3">
+                      <div className="flex justify-end gap-2">
+                        <Button size="sm" variant="outline" onClick={() => doRestore(r)}>
+                          <RotateCcw className="mr-1 h-4 w-4" />Restore
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => setPending(r)}>
+                          <Trash2 className="mr-1 h-4 w-4" />Delete forever
+                        </Button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
