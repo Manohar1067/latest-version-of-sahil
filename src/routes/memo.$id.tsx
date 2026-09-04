@@ -376,16 +376,17 @@ export const ReceiptPage = forwardRef<
             </div>
           </div>
 
-          {/* CENTER: Truck No. */}
-          <div style={{ borderRight: `2px solid ${NAVY}` }}>
+          {/* CENTER: Vehicle (two vertically-centered halves: Truck + Transport) */}
+          <div style={{ borderRight: `2px solid ${NAVY}`, display: "flex", flexDirection: "column" }}>
             <div style={cellHeading}>Vehicle</div>
-            <div style={{ padding: "6px", textAlign: "center" }}>
-              <div style={{ fontSize: "13.5px", color: "#555", fontWeight: 900 }}>Truck No.:</div>
-              <div style={{ fontSize: "17px", fontWeight: 900, color: NAVY, marginTop: "2px" }}>{truckNo}</div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px", minHeight: 0 }}>
+              <div style={{ fontSize: "14px", fontWeight: 800, color: "#3A4356" }}>Truck No.:</div>
+              <div style={{ fontSize: "22px", fontWeight: 900, color: NAVY, lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere", wordBreak: "break-word" }}>{truckNo}</div>
             </div>
-            <div style={{ padding: "4px 8px", borderTop: `1px solid ${NAVY}` }}>
-              <div style={{ fontSize: "13.5px", color: "#777", fontWeight: 900 }}>Transport:</div>
-              <div style={{ fontSize: "14.5px", fontWeight: 800 }}>{memo.transportName || "—"}</div>
+            <div style={{ borderTop: `1px solid ${NAVY}` }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px", minHeight: 0 }}>
+              <div style={{ fontSize: "14px", fontWeight: 800, color: "#3A4356" }}>Transport:</div>
+              <div style={{ fontSize: "20px", fontWeight: 900, color: NAVY, lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere", wordBreak: "break-word" }}>{memo.transportName || "—"}</div>
             </div>
           </div>
 
@@ -458,12 +459,12 @@ export const ReceiptPage = forwardRef<
 
       {/* ====== 9. SIGNATURES ====== */}
       <div className="avoid-break flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-        <div style={{ flex: 1, borderRight: `1px solid ${NAVY}`, padding: "4px 14px", textAlign: "center", minHeight: "55px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginTop: "18px" }}>Signature of the Driver</div>
+        <div style={{ flex: 1, borderRight: `1px solid ${NAVY}`, padding: "6px 14px", textAlign: "center", minHeight: "130px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginTop: "78px" }}>Signature of the Driver</div>
           <div style={{ fontSize: "10px", fontWeight: 600, color: "#777" }}>on behalf of the Owner</div>
         </div>
-        <div style={{ flex: 1, padding: "4px 14px", textAlign: "center", minHeight: "55px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginTop: "18px" }}>For <b style={{ color: NAVY, fontWeight: 800 }}>{settings.companyName || "SAHIL ROAD LINES"}</b></div>
+        <div style={{ flex: 1, padding: "6px 14px", textAlign: "center", minHeight: "130px" }}>
+          <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginTop: "78px" }}>For <b style={{ color: NAVY, fontWeight: 800 }}>{settings.companyName || "SAHIL ROAD LINES"}</b></div>
           <div style={{ fontSize: "10px", fontWeight: 600, color: "#777" }}>Authorised Signatory</div>
         </div>
       </div>
@@ -665,14 +666,22 @@ function MemoView() {
         )}
 
       <style>{`
+        /*
+          @page must live at the TOP LEVEL of the stylesheet (CSS Paged Media
+          forbids nesting it inside @media). When it is nested inside @media
+          print, the browser ignores it and falls back to the user's default
+          paper size (often US Letter), which shrinks/misaligns the receipt vs
+          the A4 screen design. Declaring it at top level guarantees A4 portrait
+          with zero margin so print matches the on-screen A4 document exactly.
+        */
+        @page { size: A4 portrait; margin: 0; }
+
         .avoid-break { break-inside: avoid; page-break-inside: avoid; }
 
         /* The print document is hidden on screen; it becomes the ONLY page on print. */
         .print-only { display: none !important; }
 
         @media print {
-          @page { size: A4 portrait; margin: 0; }
-
           html, body {
             margin: 0 !important;
             padding: 0 !important;
@@ -688,15 +697,24 @@ function MemoView() {
           */
           body > *:not(.print-only) { display: none !important; }
 
-          /* The portaled print document: a normal-flow block, exactly A4. */
+          /*
+            The portaled print document: a single A4 sheet.
+
+            IMPORTANT: no explicit height, max-height or height:100%
+            forcing here. Forcing the sheet to exactly 297mm (and the receipt to
+            100% of it) makes the block measure a hair taller than the page box
+            in some engines, which emits a stray BLANK second page. Instead the
+            sheet is pinned to the A4 width with min-height: 297mm and
+            overflow: hidden, so the receipt lays out at its natural content
+            height (identical to the on-screen A4 document) and can never spill
+            onto a second page.
+          */
           .print-only {
             display: block !important;
             width: 210mm !important;
-            height: 297mm !important;
             min-width: 210mm !important;
             max-width: 210mm !important;
             min-height: 297mm !important;
-            max-height: 297mm !important;
             margin: 0 !important;
             padding: 0 !important;
             box-sizing: border-box !important;
@@ -704,8 +722,9 @@ function MemoView() {
           }
 
           .print-only .print-area {
-            width: 100% !important;
-            height: 100% !important;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            max-height: 297mm !important;
             box-sizing: border-box !important;
             margin: 0 !important;
             padding: 12px !important;
@@ -716,23 +735,22 @@ function MemoView() {
             print-color-adjust: exact !important;
           }
 
-          /* The bordered receipt sits inside the inset margin of the A4 page. */
+          /*
+            The bordered receipt sits inside the inset margin of the A4 page.
+            It keeps its natural content height (no height:100% stretch), so
+            print typography, spacing and proportions match the screen precisely.
+          */
           .print-only .print-receipt {
             width: 100% !important;
-            height: 100% !important;
             box-sizing: border-box !important;
             margin: 0 !important;
-            overflow: visible !important;
+            overflow: hidden !important;
             display: flex !important;
             flex-direction: column !important;
             background: #ffffff !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-
-          /* Keep footer + signatures pinned; only TERMS flexes to fill. */
-          .print-only .print-receipt > * { flex-shrink: 0 !important; }
-          .print-only .print-receipt > [class*="flex-1"] { flex-shrink: 1 !important; }
         }
       `}</style>
     </AppShell>

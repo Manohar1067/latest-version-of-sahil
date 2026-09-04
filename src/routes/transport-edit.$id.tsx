@@ -147,10 +147,14 @@ function TransportEditPage() {
       // Value-based override detection: a field only becomes PERMANENTLY
       // overridden if the user edited it AND its value actually changed from the
       // originally loaded value. This guarantees:
-      //   - untouched fields are never marked overridden (so they keep syncing),
+      //   - untouched fields are never marked overridden (tracked for data-safety),
       //   - auto-derived fields (netFreight/balance/totalExpenses/finalPayable)
       //     are never frozen unless explicitly edited,
       //   - previously overridden fields are always preserved by updateTransportEntry.
+      //
+      // NOTE: overridden_fields is retained for data-safety/display purposes.
+      // Calculation fields no longer sync from Register → Transport at all,
+      // so the override flag is a record of independent Transport edits.
       const original = originalRef.current;
       const actualOverrides: string[] = [];
       if (original) {

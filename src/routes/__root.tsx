@@ -103,7 +103,7 @@ function AuthGate() {
   const navigate = useNavigate();
 
   // Public routes reachable without a session (self-service PIN recovery).
-  const isPublicAuthRoute = pathname === "/forgot-pin" || pathname === "/reset-pin";
+  const isPublicAuthRoute = pathname === "/forgot-pin" || pathname === "/reset-pin" || pathname === "/test-receipt";
 
   // A PASSWORD_RECOVERY session is a temporary auth state that must be routed
   // to /reset-pin — it must NEVER fall through to the normal Dashboard even

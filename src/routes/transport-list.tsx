@@ -1,16 +1,19 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useTransportData } from "@/lib/useTransportStore";
+import { useStoreData } from "@/lib/useStore";
 import {
   getTransportEntries, deleteTransportEntry,
   ALL_TRANSPORT_STATUSES, type TransportEntry,
 } from "@/lib/transportListStore";
+import { getTrucks, getConsignees, type FleetTruck, type Consignee } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Combobox } from "@/components/Combobox";
 import { Eye, Pencil, Trash2, Search, Download } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -40,6 +43,8 @@ type ColKey =
 function TransportListPage() {
   const nav = useNavigate();
   const { data: entries, loading, error } = useTransportData<TransportEntry[]>(() => getTransportEntries(), []);
+  const { data: trucks } = useStoreData<FleetTruck[]>(() => getTrucks(), []);
+  const { data: consignees } = useStoreData<Consignee[]>(() => getConsignees(), []);
 
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<string>("all");
@@ -90,14 +95,24 @@ function TransportListPage() {
     return rows;
   }, [entries, query, status, paidBy, consignee, truck, scope, customStart, customEnd]);
 
-  const consigneeOptions = useMemo(
-    () => Array.from(new Set((entries ?? []).map((e) => e.consigneeName || "—"))).sort(),
-    [entries],
-  );
-  const truckOptions = useMemo(
-    () => Array.from(new Set((entries ?? []).map((e) => e.truckNumber || "—"))).sort(),
-    [entries],
-  );
+  const consigneeOptions = useMemo(() => {
+    const names = new Set<string>();
+    (consignees ?? []).forEach((c) => { if (c.companyName) names.add(c.companyName); });
+    (entries ?? []).forEach((e) => names.add(e.consigneeName || "—"));
+    return [
+      { value: "all", label: "All consignees" },
+      ...Array.from(names).sort().map((n) => ({ value: n, label: n })),
+    ];
+  }, [consignees, entries]);
+  const truckOptions = useMemo(() => {
+    const names = new Set<string>();
+    (trucks ?? []).forEach((t) => { if (t.truckNumber) names.add(t.truckNumber); });
+    (entries ?? []).forEach((e) => names.add(e.truckNumber || "—"));
+    return [
+      { value: "all", label: "All trucks" },
+      ...Array.from(names).sort().map((n) => ({ value: n, label: n })),
+    ];
+  }, [trucks, entries]);
 
   const colValue = (r: TransportEntry, key: ColKey): string => {
     switch (key) {
@@ -265,23 +280,23 @@ function TransportListPage() {
           </div>
           <div>
             <label className="section-title mb-1 block">Consignee</label>
-            <Select value={consignee} onValueChange={(v) => { setConsignee(v); setPage(1); }}>
-              <SelectTrigger className="h-11 min-w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All consignees</SelectItem>
-                {consigneeOptions.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={consigneeOptions}
+              value={consignee}
+              onChange={(v) => { setConsignee(v); setPage(1); }}
+              placeholder="All consignees"
+              className="w-[200px]"
+            />
           </div>
           <div>
             <label className="section-title mb-1 block">Truck</label>
-            <Select value={truck} onValueChange={(v) => { setTruck(v); setPage(1); }}>
-              <SelectTrigger className="h-11 min-w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All trucks</SelectItem>
-                {truckOptions.map((t) => (<SelectItem key={t} value={t}>{t}</SelectItem>))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={truckOptions}
+              value={truck}
+              onChange={(v) => { setTruck(v); setPage(1); }}
+              placeholder="All trucks"
+              className="w-[200px]"
+            />
           </div>
           <div>
             <label className="section-title mb-1 block">Paid By</label>

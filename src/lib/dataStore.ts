@@ -801,8 +801,17 @@ const SYNC_FIELD_MAP: Array<[keyof MemoInput, string]> = [
 ];
 
 /**
- * Sync a memo's fields to the corresponding transport_list entry,
- * but ONLY fields that have NOT been independently overridden in Transport.
+ * Sync a memo's normal/operational fields to the corresponding transport_list entry.
+ *
+ * SYNC RULES:
+ *  - Normal/operational fields (truck, driver, consignee, dates, status, etc.)
+ *    always sync from Register → Transport.
+ *  - Calculation/financial fields (rate, freight, advance, balance, etc.) are
+ *    NEVER synced from Register → Transport after initial creation.
+ *  - There is NO reverse sync from Transport → Register.
+ *
+ * The overridden_fields column on transport_list is retained for data-safety
+ * and display purposes but is no longer used to gate sync behaviour.
  */
 export async function syncMemoToTransport(
   memoId: string,
@@ -811,20 +820,18 @@ export async function syncMemoToTransport(
   const memo = await getMemo(memoId);
   if (!memo) return;
   const entryNumber = memo.memoNumber;
-  let overridden: Record<string, boolean> = {};
   try {
     const { data: existing } = await supabase
       .from("transport_list")
-      .select("id, overridden_fields")
+      .select("id")
       .eq("entry_number", entryNumber)
       .maybeSingle();
     if (!existing) return;
-    if (typeof existing.overridden_fields === "object" && existing.overridden_fields !== null) {
-      overridden = existing.overridden_fields;
-    }
     const patch: Record<string, unknown> = {};
     for (const [appKey, col] of SYNC_FIELD_MAP) {
-      if (overridden[col]) continue;
+      // Calculation/financial fields are NEVER synced from Register → Transport
+      // after initial creation. Only normal/operational fields sync.
+      if (CALC_COLS.has(col)) continue;
       const val = (memoPatch as Record<string, unknown>)[appKey];
       if (val !== undefined) {
         patch[col] = val === "" && col.endsWith("_date") ? null : val;
@@ -833,11 +840,12 @@ export async function syncMemoToTransport(
     if (Object.keys(patch).length === 0) return;
     await supabase.from("transport_list").update(patch).eq("id", existing.id);
   } catch (e) {
-    // If overridden_fields column does not exist (legacy schema), fall back to
-    // updating ALL fields so the transport entry stays in sync with the memo.
-    console.warn("[syncMemoToTransport] ignoring override check", e);
+    // If the query fails (e.g. legacy schema), fall back to syncing only
+    // normal/operational fields, still skipping calculation fields.
+    console.warn("[syncMemoToTransport] fallback sync (skipping calc fields)", e);
     const patch: Record<string, unknown> = {};
     for (const [appKey, col] of SYNC_FIELD_MAP) {
+      if (CALC_COLS.has(col)) continue;
       const val = (memoPatch as Record<string, unknown>)[appKey];
       if (val !== undefined) {
         patch[col] = val === "" && col.endsWith("_date") ? null : val;
@@ -848,6 +856,28 @@ export async function syncMemoToTransport(
     }
   }
 }
+
+/** transport_list column names that belong to the CALCULATION / FINANCIAL group.
+ * These fields are NEVER synced from Register → Transport after initial creation.
+ * They are copied once when the memo is first created (ensureTransportEntryForMemo),
+ * then Transport List owns them independently.
+ * All other SYNC_FIELD_MAP columns are normal/operational and always sync
+ * from Register -> Transport (one-way); there is NO Transport -> Register sync. */
+const CALC_COLS: ReadonlySet<string> = new Set([
+  "rate_per_ton",
+  "net_freight",
+  "total_hire",
+  "advance",
+  "balance",
+  "paid_at",
+  "commission",
+  "loading_charges",
+  "tds",
+  "local_driver_guide",
+  "goods_mamuli",
+  "total_expenses",
+  "final_payable",
+]);
 
 // -------------------------- DEV UTIL ----------------------------------------
 // ⚠️ Business data only — does NOT touch auth, profiles, or settings.

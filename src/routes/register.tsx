@@ -19,6 +19,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { Combobox } from "@/components/Combobox";
 import { exportRows } from "@/lib/exportData";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -291,23 +292,29 @@ function RegisterPage() {
           </div>
           <div>
             <label className="section-title mb-1 block">Truck</label>
-            <Select value={truckId} onValueChange={setTruckId}>
-              <SelectTrigger className="h-11 min-w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All trucks</SelectItem>
-                {trucks?.map((t) => (<SelectItem key={t.id} value={t.id}>{t.truckNumber}</SelectItem>))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={[
+                { value: "all", label: "All trucks" },
+                ...(trucks ?? []).map((t) => ({ value: t.id, label: t.truckNumber, keywords: `${t.driverName} ${t.ownerName}` })),
+              ]}
+              value={truckId}
+              onChange={(v) => { setTruckId(v); setPage(1); }}
+              placeholder="All trucks"
+              className="w-[200px]"
+            />
           </div>
           <div>
             <label className="section-title mb-1 block">Consignee</label>
-            <Select value={consigneeId} onValueChange={setConsigneeId}>
-              <SelectTrigger className="h-11 min-w-[180px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All consignees</SelectItem>
-                {consignees?.map((c) => (<SelectItem key={c.id} value={c.id}>{c.companyName}</SelectItem>))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={[
+                { value: "all", label: "All consignees" },
+                ...(consignees ?? []).map((c) => ({ value: c.id, label: c.companyName, keywords: `${c.city} ${c.contactPerson} ${c.phone}` })),
+              ]}
+              value={consigneeId}
+              onChange={(v) => { setConsigneeId(v); setPage(1); }}
+              placeholder="All consignees"
+              className="w-[200px]"
+            />
           </div>
           <div>
             <label className="section-title mb-1 block">Paid By</label>
