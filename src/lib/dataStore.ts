@@ -1,12 +1,12 @@
 /**
  * ============================================================================
- *  DATA STORE — Sahil Road Lines ERP (Supabase-backed)
+ *  DATA STORE â€” Sahil Road Lines ERP (Supabase-backed)
  * ----------------------------------------------------------------------------
- *  Same exported functions/types as the original localStorage version —
+ *  Same exported functions/types as the original localStorage version â€”
  *  every UI component that imports from this file needs zero changes.
  *
  *  Audit log entries and status history are written automatically by database
- *  triggers (see supabase_migration_2.sql) — this file does not write to
+ *  triggers (see supabase_migration_2.sql) â€” this file does not write to
  *  audit_log or memo_status_history directly, it just reads them back.
  * ============================================================================
  */
@@ -14,9 +14,13 @@
 import { supabase } from "./supabaseClient";
 import {
   getTrashedTransportEntries,
+  getTransportEntries,
   restoreTransportEntry,
   permanentlyDeleteTransportEntry,
+  entryToRow,
+  emit as emitTransport,
 } from "./transportListStore";
+import type { TransportEntry } from "./transportListStore";
 
 // -----------------------------  TYPES  --------------------------------------
 // (unchanged from the original file)
@@ -74,8 +78,8 @@ export interface Memo {
   transportName: string;
   consigneeId: string;
   truckId: string;
-  truckNumber: string;      // free text, like transportName — no link required
-  consigneeName: string;    // free text, like transportName — no link required
+  truckNumber: string;      // free text, like transportName â€” no link required
+  consigneeName: string;    // free text, like transportName â€” no link required
   driverName: string;
   ownerName: string;
   ownerPhone: string;
@@ -376,7 +380,7 @@ function rowToHistory(r: any): MemoStatusHistory {
 }
 
 // -------------------------- REALTIME SUBSCRIBE BUS ---------------------------
-// Same subscribe() API as before — components don't need to change.
+// Same subscribe() API as before â€” components don't need to change.
 // Internally now backed by Supabase Realtime instead of a manual local emit.
 
 const listeners = new Set<() => void>();
@@ -559,7 +563,7 @@ export async function permanentlyDeleteConsignee(id: string): Promise<void> {
 export interface TrashItem {
   kind: "Memo" | "Truck" | "Consignee" | "Transport";
   id: string;
-  label: string;       // display text — memo number / truck number / company name
+  label: string;       // display text â€” memo number / truck number / company name
   deletedAt?: string;
 }
 
@@ -686,7 +690,7 @@ export async function permanentlyDeleteMemo(id: string): Promise<void> {
 }
 
 // -------------------------- LOGS --------------------------------------------
-// Written automatically by database triggers — these functions only read.
+// Written automatically by database triggers â€” these functions only read.
 
 export async function getAuditLog(): Promise<AuditLogEntry[]> {
   const { data, error } = await supabase
@@ -762,7 +766,7 @@ export async function ensureTruckExists(
 
 // -------------------------- TRANSPORT SYNC (PARTS 8, 9, 10) -----------------
 
-/** Memo input field → transport_list column name mapping for sync. */
+/** Memo input field â†’ transport_list column name mapping for sync. */
 const SYNC_FIELD_MAP: Array<[keyof MemoInput, string]> = [
   ["dispatchDate", "dispatch_date"],
   ["fromLocation", "from_location"],
@@ -805,10 +809,10 @@ const SYNC_FIELD_MAP: Array<[keyof MemoInput, string]> = [
  *
  * SYNC RULES:
  *  - Normal/operational fields (truck, driver, consignee, dates, status, etc.)
- *    always sync from Register → Transport.
+ *    always sync from Register â†’ Transport.
  *  - Calculation/financial fields (rate, freight, advance, balance, etc.) are
- *    NEVER synced from Register → Transport after initial creation.
- *  - There is NO reverse sync from Transport → Register.
+ *    NEVER synced from Register â†’ Transport after initial creation.
+ *  - There is NO reverse sync from Transport â†’ Register.
  *
  * The overridden_fields column on transport_list is retained for data-safety
  * and display purposes but is no longer used to gate sync behaviour.
@@ -829,7 +833,7 @@ export async function syncMemoToTransport(
     if (!existing) return;
     const patch: Record<string, unknown> = {};
     for (const [appKey, col] of SYNC_FIELD_MAP) {
-      // Calculation/financial fields are NEVER synced from Register → Transport
+      // Calculation/financial fields are NEVER synced from Register â†’ Transport
       // after initial creation. Only normal/operational fields sync.
       if (CALC_COLS.has(col)) continue;
       const val = (memoPatch as Record<string, unknown>)[appKey];
@@ -858,7 +862,7 @@ export async function syncMemoToTransport(
 }
 
 /** transport_list column names that belong to the CALCULATION / FINANCIAL group.
- * These fields are NEVER synced from Register → Transport after initial creation.
+ * These fields are NEVER synced from Register â†’ Transport after initial creation.
  * They are copied once when the memo is first created (ensureTransportEntryForMemo),
  * then Transport List owns them independently.
  * All other SYNC_FIELD_MAP columns are normal/operational and always sync
@@ -880,10 +884,10 @@ const CALC_COLS: ReadonlySet<string> = new Set([
 ]);
 
 // -------------------------- DEV UTIL ----------------------------------------
-// ⚠️ Business data only — does NOT touch auth, profiles, or settings.
+// âš ï¸ Business data only â€” does NOT touch auth, profiles, or settings.
 
 export async function _resetStore(): Promise<void> {
-  console.warn("_resetStore: clearing business data from Supabase — this cannot be undone.");
+  console.warn("_resetStore: clearing business data from Supabase â€” this cannot be undone.");
   await supabase.from("memo_status_history").delete().not("id", "is", null);
   await supabase.from("audit_log").delete().not("id", "is", null);
   await supabase.from("transport_list").delete().not("id", "is", null);
@@ -897,78 +901,147 @@ export async function _resetStore(): Promise<void> {
 
 export async function exportAllDataXlsx(): Promise<void> {
   const XLSX = await import("xlsx");
-  const [trucks, consignees, memos, settings] = await Promise.all([
+  const [trucks, consignees, memos, settings, transports] = await Promise.all([
     getTrucks(),
     getConsignees(),
     getMemos({ includeDeleted: true }),
     getSettings(),
+    getTransportEntries({ includeDeleted: true }),
   ]);
 
   const wb = XLSX.utils.book_new();
 
-  const memoRows = memos.map((m) => ({
-    "Memo Number": m.memoNumber,
-    "Dispatch Date": m.dispatchDate,
-    "From": m.fromLocation,
-    "To": m.toLocation,
-    "Transport": m.transportName,
-    "Truck Number": m.truckNumber,
-    "Consignee": m.consigneeName,
-    "Driver": m.driverName,
-    "Owner": m.ownerName,
-    "Owner Phone": m.ownerPhone,
-    "Material": m.materialName,
-    "Weight (Tons)": m.weightTons,
-    "Rate/Ton": m.ratePerTon,
-    "Net Freight": m.netFreight,
-    "Total Hire": m.totalHire,
-    "Advance": m.advance,
-    "Balance": m.balance,
-    "Commission": m.commission,
-    "Loading Charges": m.loadingCharges,
-    "TDS": m.tds,
-    "Goods Mamuli": m.goodsMamuli,
-    "Total Expenses": m.totalExpenses,
-    "Paid By": m.paidBy,
-    "Payment Method": m.paymentMethod,
-    "Final Payable": m.finalPayable,
-    "Final Payment Date": m.finalPaymentDate || "",
-    "Status": m.status,
-    "Remarks": m.remarks || "",
-    "Description": m.description || "",
-    "G.C. No.": m.gcNo || "",
-    "Paid At": m.paidAt || "",
-    "Local Driver / Guide": m.localDriverGuide || "",
-    "Unloading Date": m.unloadingDate || "",
-    "LR Received Date": m.lrReceivedDate || "",
-    "LR Submitted Date": m.lrSubmittedDate || "",
-    "Internal Notes": m.internalNotes || "",
-    "Is Draft": m.isDraft ? "Yes" : "No",
-    "Is Deleted": m.isDeleted ? "Yes" : "No",
-  }));
+  // CSV/Excel-safe: JSON-serialize only the fields the app actually knows how to
+  // restore, so a "revived" D.B. row never contains a truncated UUID.
+  const cloneKnown = (obj: object, keys: string[]): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    const src = obj as Record<string, unknown>;
+    for (const k of keys) {
+      const v = src[k];
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
+  };
+
+  const memoRows = memos.map((m) =>
+    cloneKnown(m, [
+      "memoNumber",
+      "dispatchDate",
+      "fromLocation",
+      "toLocation",
+      "transportName",
+      "truckNumber",
+      "consigneeName",
+      "driverName",
+      "ownerName",
+      "ownerPhone",
+      "materialName",
+      "weightTons",
+      "ratePerTon",
+      "netFreight",
+      "totalHire",
+      "advance",
+      "balance",
+      "commission",
+      "loadingCharges",
+      "tds",
+      "goodsMamuli",
+      "totalExpenses",
+      "paidBy",
+      "paymentMethod",
+      "finalPayable",
+      "finalPaymentDate",
+      "status",
+      "remarks",
+      "description",
+      "gcNo",
+      "paidAt",
+      "localDriverGuide",
+      "unloadingDate",
+      "lrReceivedDate",
+      "lrSubmittedDate",
+      "internalNotes",
+      "isDraft",
+      "isDeleted",
+    ]),
+  );
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(memoRows), "Memos");
 
-  const truckRows = trucks.map((t) => ({
-    "Truck Number": t.truckNumber,
-    "Owner Name": t.ownerName,
-    "Owner Phone": t.ownerPhone,
-    "Driver Name": t.driverName,
-    "Driver Phone": t.driverPhone,
-    "Insurance Expiry": t.insuranceExpiry || "",
-    "Remarks": t.remarks || "",
-  }));
+  const truckRows = trucks.map((t) =>
+    cloneKnown(t, [
+      "truckNumber",
+      "ownerName",
+      "ownerPhone",
+      "driverName",
+      "driverPhone",
+      "insuranceExpiry",
+      "remarks",
+    ]),
+  );
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(truckRows), "Fleet");
 
-  const consigneeRows = consignees.map((c) => ({
-    "Company Name": c.companyName,
-    "Contact Person": c.contactPerson,
-    "Phone": c.phone,
-    "City": c.city,
-    "State": c.state,
-    "Address": c.address,
-    "Remarks": c.remarks || "",
-  }));
+  const consigneeRows = consignees.map((c) =>
+    cloneKnown(c, [
+      "companyName",
+      "contactPerson",
+      "phone",
+      "city",
+      "state",
+      "address",
+      "remarks",
+    ]),
+  );
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(consigneeRows), "Consignees");
+
+  const transportRows = transports.map((t) => {
+    const row = cloneKnown(t, [
+      "entryNumber",
+      "dispatchDate",
+      "fromLocation",
+      "toLocation",
+      "transportName",
+      "truckNumber",
+      "driverName",
+      "ownerName",
+      "ownerPhone",
+      "consigneeName",
+      "materialName",
+      "weightTons",
+      "ratePerTon",
+      "netFreight",
+      "advance",
+      "balance",
+      "unloadingDate",
+      "haltingDate",
+      "haltingCharge",
+      "lrReceivedDate",
+      "lrSubmittedDate",
+      "description",
+      "gcNo",
+      "totalHire",
+      "paidAt",
+      "localDriverGuide",
+      "commission",
+      "loadingCharges",
+      "tds",
+      "goodsMamuli",
+      "totalExpenses",
+      "paidBy",
+      "paymentMethod",
+      "finalPayable",
+      "finalPaymentDate",
+      "status",
+      "remarks",
+      "isDeleted",
+    ]);
+    if (t.overriddenFields) {
+      // Preserve per-field override flags as readable JSON so a restore
+      // doesn't clobber Transport List's independent edits.
+      row["Overridden Fields"] = JSON.stringify(t.overriddenFields);
+    }
+    return row;
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transportRows), "Transport");
 
   const settingsRows = [{ ...settings }];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(settingsRows), "Settings");
@@ -986,149 +1059,953 @@ export async function exportAllDataXlsx(): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-export async function importAllDataXlsx(
-  file: File,
-): Promise<{ trucks: number; consignees: number; memos: number }> {
+/**
+ * Import / RESTORE an application-exported Excel backup (Memos / Fleet /
+ * Consignees / Transport / Settings sheets).
+ *
+ * SAFE MERGE / RESTORE SEMANTICS (idempotent â€” safe to run repeatedly):
+ *  - A record key (memo number / truck number / company name / transport entry
+ *    number) that already exists in the DB AND is NOT deleted is SKIPPED â€” its
+ *    current data is never overwritten, and it is never duplicated.
+ *  - A record key that exists in the DB but was SOFT-DELETED (trash) is
+ *    RESTORED: it is un-deleted, deleted_at is cleared and its values are
+ *    refreshed from the backup.
+ *  - A record key missing from the DB is INSERTED from the backup.
+ *  - Existing records are never deleted and no table is reset/truncated.
+ *  - The Settings sheet (when present) restores the company settings row.
+ *
+ * COLUMN RESOLUTION
+ *  - Headers are matched case-insensitively and whitespace-tolerantly and may
+ *    use any of several legacy spellings ("Memo No." == "Memo Number", ...) so
+ *    backups made by older app versions still import.
+ *  - Memo / transport rows are keyed by their number columns (memo_number /
+ *    entry_number); truck / consignee rows by truck_number / company_name.
+ *  - After the Consignees and Fleet sheets are restored, each memo's
+ *    consignee_id / truck_id is re-linked by an exact (case-insensitive) name /
+ *    number match â€” with the free-text fallback columns always preserved.
+ */
+
+// -------------------------- IMPORT TYPES ------------------------------------
+
+export interface ImportEntityCounts {
+  inserted: number;
+  restored: number;
+  skipped: number;
+  duplicate: number;
+  failed: number;
+}
+
+export interface ImportOperation {
+  sheet: string;
+  row: number;
+  key: string;
+  operation: "inserted" | "restored" | "skipped" | "duplicate" | "failed";
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+}
+
+export interface ImportSheetResult {
+  sheetName: string;
+  recognized: boolean;
+  rows: number;
+  columns: string[];
+  processed: number;
+  skippedNoKey: number;
+  operations: ImportOperation[];
+}
+
+export interface ImportResult {
+  memos: ImportEntityCounts;
+  trucks: ImportEntityCounts;
+  consignees: ImportEntityCounts;
+  transports: ImportEntityCounts;
+  settingsUpdated: boolean;
+  recognizedSheets: string[];
+  unknownSheets: string[];
+  file: { name: string; size: number };
+  sheets: ImportSheetResult[];
+}
+
+const emptyCounts = (): ImportEntityCounts => ({
+  inserted: 0,
+  restored: 0,
+  skipped: 0,
+  duplicate: 0,
+  failed: 0,
+});
+
+// -------------------------- COLUMN RESOLUTION --------------------------------
+
+type FieldDef = {
+  aliases: string[];
+};
+
+const normKey = (s: string): string =>
+  s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+const fieldMap: Record<string, FieldDef> = {
+  memoNumber: { aliases: ["Memo Number", "memoNumber", "Memo No.", "Memo No", "Memo #", "memo_number", "memoNo"] },
+  dispatchDate: { aliases: ["Dispatch Date", "dispatchDate", "Dispatch", "dispatch_date", "date"] },
+  fromLocation: { aliases: ["From", "from_location", "fromLocation"] },
+  toLocation: { aliases: ["To", "Destination", "to_location", "toLocation"] },
+  transportName: { aliases: ["Transport", "transport_name", "transportName"] },
+  truckNumber: { aliases: ["Truck Number", "Truck", "Truck No.", "Truck No", "truck_number", "truckNo"] },
+  consigneeName: { aliases: ["Consignee", "consignee_name", "consigneeName"] },
+  driverName: { aliases: ["Driver Name", "Driver", "driver_name", "driverName"] },
+  ownerName: { aliases: ["Owner Name", "Owner", "owner_name", "ownerName"] },
+  ownerPhone: { aliases: ["Owner Phone", "Owner Phone No.", "owner_phone", "ownerPhone"] },
+  driverPhone: { aliases: ["Driver Phone", "driver_phone", "driverPhone"] },
+  materialName: { aliases: ["Material", "Article", "material_name", "materialName"] },
+  weightTons: { aliases: ["Weight (Tons)", "Weight", "weight_tons", "weightTons"] },
+  ratePerTon: { aliases: ["Rate/Ton", "Rate per Ton", "Rate/Ton (Transport)", "rate_per_ton", "ratePerTon"] },
+  netFreight: { aliases: ["Net Freight", "net_freight", "netFreight"] },
+  totalHire: { aliases: ["Total Hire", "total_hire", "totalHire"] },
+  advance: { aliases: ["Advance", "advance"] },
+  balance: { aliases: ["Balance", "balance"] },
+  commission: { aliases: ["Commission", "commission"] },
+  loadingCharges: { aliases: ["Loading Charges", "Loading", "loading_charges", "loadingCharges"] },
+  tds: { aliases: ["TDS", "tds"] },
+  goodsMamuli: { aliases: ["Goods Mamuli", "Office Mamuli", "goods_mamuli", "goodsMamuli"] },
+  totalExpenses: { aliases: ["Total Expenses", "total_expenses", "totalExpenses"] },
+  paidBy: { aliases: ["Paid By", "paid_by", "paidBy"] },
+  paymentMethod: { aliases: ["Payment Method", "payment_method", "paymentMethod"] },
+  finalPayable: { aliases: ["Final Payable", "final_payable", "finalPayable"] },
+  finalPaymentDate: { aliases: ["Final Payment Date", "final_payment_date", "finalPaymentDate"] },
+  status: { aliases: ["Status", "status"] },
+  remarks: { aliases: ["Remarks", "Remark", "remarks"] },
+  description: { aliases: ["Description", "description"] },
+  gcNo: { aliases: ["G.C. No.", "GC No.", "GC No", "GC No", "gc_no", "gcNo"] },
+  paidAt: { aliases: ["Paid At", "paid_at", "paidAt"] },
+  localDriverGuide: { aliases: ["Local Driver / Guide", "Local Driver/Guide", "local_driver_guide", "localDriverGuide"] },
+  unloadingDate: { aliases: ["Unloading Date", "Unloading", "unloading_date", "unloadingDate"] },
+  lrReceivedDate: { aliases: ["LR Received Date", "LR Received", "lr_received_date", "lrReceivedDate"] },
+  lrSubmittedDate: { aliases: ["LR Submitted Date", "LR Submitted", "lr_submitted_date", "lrSubmittedDate"] },
+  internalNotes: { aliases: ["Internal Notes", "internal_notes", "internalNotes"] },
+  isDraft: { aliases: ["Is Draft", "is_draft", "isDraft"] },
+  isDeleted: { aliases: ["Is Deleted", "is_deleted", "isDeleted"] },
+  companyName: { aliases: ["Company Name", "Name", "Party", "company_name", "companyName"] },
+  contactPerson: { aliases: ["Contact Person", "contact_person", "contactPerson"] },
+  phone: { aliases: ["Phone", "Phone No.", "Phone No", "phone"] },
+  city: { aliases: ["City", "city"] },
+  state: { aliases: ["State", "state"] },
+  address: { aliases: ["Address", "address"] },
+  insuranceExpiry: { aliases: ["Insurance Expiry", "insurance_expiry", "insuranceExpiry"] },
+  entryNumber: { aliases: ["Entry Number", "Memo Number", "Memo #", "Entry No.", "Entry No", "entry_number", "entryNo"] },
+  haltingDate: { aliases: ["Halting Date", "halting_date", "haltingDate"] },
+  haltingCharge: { aliases: ["Halting Charge", "halting_charge", "haltingCharge"] },
+  overriddenFields: { aliases: ["Overridden Fields", "overridden_fields", "overriddenFields"] },
+  companyNameSettings: { aliases: ["companyName", "company_name"] },
+  addressSettings: { aliases: ["address"] },
+  phoneSettings: { aliases: ["phone"] },
+  emailSettings: { aliases: ["email"] },
+  websiteSettings: { aliases: ["website"] },
+  logoUrlSettings: { aliases: ["logoUrl", "logo_url"] },
+  gstSettings: { aliases: ["gst"] },
+  jurisdictionTextSettings: { aliases: ["jurisdictionText", "jurisdiction_text"] },
+  termsSettings: { aliases: ["terms"] },
+  darkModeSettings: { aliases: ["darkMode", "dark_mode"] },
+};
+
+/** Reads a cell value that may be empty; undefined when the column is absent.
+ *  Headers are matched case-insensitively / whitespace-tolerantly: first a
+ *  direct hit on the exact alias, then a normalized (lowercased, punctuation-
+ *  stripped) lookup so "Memo number", "G.C.No", "rate per ton" all resolve. */
+function cellVal(row: Record<string, any>, field: string): string | number | undefined {
+  const def = fieldMap[field];
+  if (!def) return undefined;
+  for (const alias of def.aliases) {
+    const v = row[alias];
+    if (v !== undefined && v !== null) {
+      return typeof v === "number" ? v : String(v);
+    }
+  }
+  for (const alias of def.aliases) {
+    const nk = normKey(alias);
+    const v = row[nk];
+    if (v !== undefined && v !== null) return typeof v === "number" ? v : String(v);
+  }
+  return undefined;
+}
+
+/** Adds a normalized alias key (lowercased, punctuation stripped) for every
+ *  header so tolerance-matched imports ("Memo number", "G.C.No") still read. */
+function normalizeRows(rows: any[]): any[] {
+  return rows.map((r) => {
+    const out: Record<string, any> = { ...r };
+    for (const k of Object.keys(r)) {
+      const nk = normKey(k);
+      if (nk && nk !== k && !(nk in out)) out[nk] = r[k];
+    }
+    return out;
+  });
+}
+
+function cellStr(row: Record<string, any>, field: string): string {
+  const v = cellVal(row, field);
+  return v === undefined || v === null ? "" : String(v).trim();
+}
+
+function cellNum(row: Record<string, any>, field: string): number {
+  const v = cellVal(row, field);
+  if (v === undefined || v === null) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[Tt ]|$)/;
+const DMY_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+
+/** Excel serial number -> ISO date (YYYY-MM-DD). Returns "" when out of range. */
+function excelSerialToIso(s: number): string {
+  if (!Number.isFinite(s) || s <= 0 || s > 2958465) return "";
+  const utcMs = Math.round((s - 25569) * 86400 * 1000);
+  const d = new Date(utcMs);
+  if (isNaN(d.getTime())) return "";
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${mm}-${dd}`;
+}
+
+/** Converts a date cell to ISO YYYY-MM-DD for Postgres `date` columns.
+ *  The app exports dates via formatDate() as DD/MM/YYYY, and renders null as
+ *  "—" (em-dash); raw DD/MM/YYYY or "—" must never reach Postgres (Postgres
+ *  would parse DD/MM/YYYY under the MDY DateStyle and reject "—" with an
+ *  invalid-input-syntax error). Handles dd/MM/yyyy, ISO strings, and Excel
+ *  cell-value series numbers. Blank / placeholder ("—", "-", "/") -> undefined. */
+function cellDate(row: Record<string, any>, field: string): string | undefined {
+  const v = cellVal(row, field);
+  if (v === undefined || v === null) return undefined;
+  if (typeof v === "number") return excelSerialToIso(v) || undefined;
+  const s = String(v).trim();
+  if (s === "" || s === "—" || s === "-" || s === "/" || s === "--") return undefined;
+  const dmy = s.match(DMY_RE);
+  if (dmy) {
+    return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+  }
+  const iso = s.match(ISO_DATE_RE);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const t = Date.parse(s);
+  if (!isNaN(t)) {
+    const d = new Date(t);
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}-${mm}-${dd}`;
+  }
+  return undefined;
+}
+
+/** Captures Supabase error fields onto an ImportOperation. */
+function capErr(e: any): Pick<ImportOperation, "message" | "code" | "details" | "hint"> {
+  const out: Pick<ImportOperation, "message" | "code" | "details" | "hint"> = {
+    message: String(e?.message ?? "Unknown error").slice(0, 400),
+  };
+  if (e?.code) out.code = String(e.code);
+  if (e?.details) out.details = String(e.details);
+  if (e?.hint) out.hint = String(e.hint);
+  return out;
+}
+
+// -------------------------- SHEET DETECTION ----------------------------------
+
+type SheetKind = "memos" | "trucks" | "consignees" | "transport" | "settings";
+
+const KIND_SHEET_NAMES: Record<SheetKind, string[]> = {
+  memos: ["Memos", "Register"],
+  trucks: ["Fleet", "Trucks"],
+  consignees: ["Consignees"],
+  transport: ["Transport"],
+  settings: ["Settings"],
+};
+
+/** Identifies the kind of data a worksheet holds from its header row, so that
+ *  single-sheet exports (the Register List / Transport List "Sheet1" files) are
+ *  recognized without relying on the Full-Backup sheet names. Matching uses the
+ *  same punctuation/case-insensitive normalization as cellVal and explicit
+ *  signatures only â€” never fuzzy substring matching, so a Reports export ("Memo #",
+ *  "Date", "Expenses") is correctly NOT classified as memo data. */
+function classifySheetKind(headers: string[]): SheetKind | null {
+  const h = new Set(headers.map((x) => normKey(String(x))));
+  const has = (alias: string) => h.has(normKey(alias));
+
+  if (has("Jurisdiction Text") || has("Dark Mode") || (has("Company Name") && has("Logo URL"))) {
+    return "settings";
+  }
+  if (has("Entry Number") || has("Halting Charge") || has("Rate/Ton (Transport)")) {
+    return "transport";
+  }
+if (has("Company Name")) {
+    if (has("Contact Person") || has("City") || has("State") || has("Address")) {
+      return "consignees";
+    }
+    return null; // "Company Name" alone is also the Settings profile — stay strict.
+  }
+  const memoPrimary =
+    has("Memo") || has("Memo Number") || has("Memo No.") || has("Memo No") || has("Memo #") || has("memoNumber");
+  if (
+    memoPrimary &&
+    (has("Dispatch") ||
+      has("Dispatch Date") ||
+      has("From") ||
+      has("To") ||
+      has("Rate/Ton") ||
+      has("Weight") ||
+      has("Consignee") ||
+      has("G.C. No.") ||
+      has("Article"))
+  ) {
+    return "memos";
+  }
+  if (has("Truck Number") || has("Truck No.") || has("Truck No") || has("truckNumber")) {
+    if (has("Owner Name") || has("Owner Phone") || has("Insurance Expiry") || has("Driver Name")) {
+      return "trucks";
+    }
+  }
+  return null;
+}
+
+// -------------------------- IMPORT -------------------------------------------
+
+export async function importAllDataXlsx(file: File): Promise<ImportResult> {
   const XLSX = await import("xlsx");
+  const debug = false; // toggle to true locally to trace every import step.
   const arrayBuffer = await file.arrayBuffer();
   const wb = XLSX.read(arrayBuffer, { type: "array" });
 
-  let tCount = 0,
-    cCount = 0,
-    mCount = 0;
-
-  const sheets = wb.SheetNames.map((n) => n.toLowerCase());
-
-  const consigneeSheet = wb.Sheets[wb.SheetNames.find((n) => n.toLowerCase() === "consignees") ?? ""];
-  if (consigneeSheet) {
-    const rows: any[] = XLSX.utils.sheet_to_json(consigneeSheet);
-    for (const r of rows) {
-      const companyName = r["Company Name"] || r["companyName"] || "";
-      if (!companyName) continue;
-      const trimmed = String(companyName).trim();
-      const { data: existing } = await supabase
-        .from("consignees")
-        .select("id")
-        .ilike("company_name", trimmed)
-        .maybeSingle();
-      if (existing) {
-        await supabase.from("consignees").update({
-          contact_person: r["Contact Person"] || r["contactPerson"] || "",
-          phone: r["Phone"] || r["phone"] || "",
-          city: r["City"] || r["city"] || "",
-          state: r["State"] || r["state"] || "",
-          address: r["Address"] || r["address"] || "",
-          remarks: r["Remarks"] || r["remarks"] || "",
-        }).eq("id", existing.id);
-      } else {
-        await supabase.from("consignees").insert(consigneeToRow({
-          companyName: trimmed,
-          contactPerson: r["Contact Person"] || "",
-          phone: r["Phone"] || "",
-          city: r["City"] || "",
-          state: r["State"] || "",
-          address: r["Address"] || "",
-          remarks: r["Remarks"] || "",
-        }));
-      }
-      cCount++;
+  if (debug) {
+    // Dev-only diagnostics: workbook structure at import time.
+    console.info(`[import] file=${file.name} size=${file.size}`);
+    for (const n of wb.SheetNames) {
+      const ws = wb.Sheets[n];
+      const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+      const headers = ((grid[0] ?? []) as any[]).map((x) => String(x)).filter((x) => x !== "");
+      console.info(
+        `[import] sheet="${n}" range=${ws["!ref"] ?? "(none)"} gridRows=${grid.length} dataRows=${Math.max(0, grid.length - (headers.length ? 1 : 0))} headers=${JSON.stringify(headers)}`
+      );
+      grid.slice(0, 6).forEach((r, i) => console.info(`[import]   row${i + 1}: ${JSON.stringify(r)}`));
     }
   }
 
-  const fleetSheet = wb.Sheets[wb.SheetNames.find((n) => n.toLowerCase() === "fleet") ?? ""];
-  if (fleetSheet) {
-    const rows: any[] = XLSX.utils.sheet_to_json(fleetSheet);
-    for (const r of rows) {
-      const truckNumber = r["Truck Number"] || r["truckNumber"] || "";
-      if (!truckNumber) continue;
-      const trimmed = String(truckNumber).trim();
-      const { data: existing } = await supabase
-        .from("fleet_trucks")
-        .select("id")
-        .ilike("truck_number", trimmed)
-        .maybeSingle();
-      if (existing) {
-        await supabase.from("fleet_trucks").update(truckToRow({
-          truckNumber: trimmed,
-          ownerName: r["Owner Name"] || "",
-          ownerPhone: r["Owner Phone"] || "",
-          driverName: r["Driver Name"] || "",
-          driverPhone: r["Driver Phone"] || "",
-          insuranceExpiry: r["Insurance Expiry"] || "",
-          remarks: r["Remarks"] || "",
-        })).eq("id", existing.id);
-      } else {
-        await supabase.from("fleet_trucks").insert(truckToRow({
-          truckNumber: trimmed,
-          ownerName: r["Owner Name"] || "",
-          ownerPhone: r["Owner Phone"] || "",
-          driverName: r["Driver Name"] || "",
-          driverPhone: r["Driver Phone"] || "",
-          insuranceExpiry: r["Insurance Expiry"] || "",
-          remarks: r["Remarks"] || "",
-        }));
+  // Resolve each sheet to a supported kind:
+  //  1) by normalized name (Full-Backup workbook: Memos/Fleet/Consignees/Transport/Settings)
+  //  2) otherwise by explicit header signatures (single-sheet "Sheet1" Register/Transport exports)
+  const byKind = new Map<SheetKind, number>();
+  const claimed = new Set<number>();
+  for (let i = 0; i < wb.SheetNames.length; i++) {
+    const nk = normKey(wb.SheetNames[i]);
+    for (const kind of Object.keys(KIND_SHEET_NAMES) as SheetKind[]) {
+      if (KIND_SHEET_NAMES[kind].some((n) => normKey(n) === nk) && !byKind.has(kind)) {
+        byKind.set(kind, i);
+        claimed.add(i);
+        break;
       }
-      tCount++;
     }
   }
+  for (let i = 0; i < wb.SheetNames.length; i++) {
+    if (claimed.has(i)) continue;
+    const ws = wb.Sheets[wb.SheetNames[i]];
+    const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+    const headers = ((grid[0] ?? []) as any[]).map((x) => String(x)).filter((x) => x !== "");
+    const kind = classifySheetKind(headers);
+    if (kind && !byKind.has(kind)) {
+      byKind.set(kind, i);
+      claimed.add(i);
+    }
+  }
+  const sheetIndex = (kind: SheetKind): number | undefined => byKind.get(kind);
+  const sheetNameOf = (kind: SheetKind): string => {
+    const i = sheetIndex(kind);
+    return i === undefined ? kind : wb.SheetNames[i];
+  };
+  const getSheet = (kind: SheetKind) => {
+    const i = sheetIndex(kind);
+    return i === undefined ? undefined : wb.Sheets[wb.SheetNames[i]];
+  };
 
-  const memoSheet = wb.Sheets[wb.SheetNames.find((n) => n.toLowerCase() === "memos") ?? ""];
-  if (memoSheet) {
-    const rows: any[] = XLSX.utils.sheet_to_json(memoSheet);
-    for (const r of rows) {
-      const memoNumber = r["Memo Number"] || "";
-      if (!memoNumber) continue;
-      const { data: existing } = await supabase
-        .from("memos")
-        .select("id")
-        .eq("memo_number", memoNumber)
-        .maybeSingle();
-      const row = memoToRow({
-        dispatchDate: r["Dispatch Date"] || "",
-        fromLocation: r["From"] || "",
-        toLocation: r["To"] || "",
-        transportName: r["Transport"] || "",
-        truckNumber: r["Truck Number"] || "",
-        consigneeName: r["Consignee"] || "",
-        driverName: r["Driver"] || "",
-        ownerName: r["Owner"] || "",
-        ownerPhone: r["Owner Phone"] || "",
-        materialName: r["Material"] || "",
-        weightTons: Number(r["Weight (Tons)"] || 0),
-        ratePerTon: Number(r["Rate/Ton"] || 0),
-        netFreight: Number(r["Net Freight"] || 0),
-        advance: Number(r["Advance"] || 0),
-        balance: Number(r["Balance"] || 0),
-        commission: Number(r["Commission"] || 0),
-        loadingCharges: Number(r["Loading Charges"] || 0),
-        tds: Number(r["TDS"] || 0),
-        goodsMamuli: Number(r["Goods Mamuli"] || 0),
-        totalExpenses: Number(r["Total Expenses"] || 0),
-        paidBy: r["Paid By"] || "SRL",
-        paymentMethod: r["Payment Method"] || "Cash",
-        finalPayable: Number(r["Final Payable"] || 0),
-        finalPaymentDate: r["Final Payment Date"] || "",
-        status: r["Status"] || "Dispatched",
-        remarks: r["Remarks"] || "",
-        description: r["Description"] || "",
-        gcNo: r["G.C. No."] || "",
-        totalHire: Number(r["Total Hire"] || 0),
-        paidAt: r["Paid At"] || "",
-        localDriverGuide: r["Local Driver / Guide"] || "",
-        unloadingDate: r["Unloading Date"] || "",
-        lrReceivedDate: r["LR Received Date"] || "",
-        lrSubmittedDate: r["LR Submitted Date"] || "",
-        internalNotes: r["Internal Notes"] || "",
-        isDraft: r["Is Draft"] === "Yes",
+  const res: ImportResult = {
+    memos: emptyCounts(),
+    trucks: emptyCounts(),
+    consignees: emptyCounts(),
+    transports: emptyCounts(),
+    settingsUpdated: false,
+    recognizedSheets: [],
+    unknownSheets: [],
+    file: { name: file.name, size: file.size },
+    sheets: [],
+  };
+
+  if (debug) {
+    console.info(`[import] file=${file.name} size=${file.size} sheets=`, wb.SheetNames);
+  }
+
+  // ---- 1. Consignees (restore reference data first so memos can re-link) ----
+  {
+    const sheet = getSheet("consignees");
+    if (sheet) {
+      const sheetLabel = sheetNameOf("consignees");
+      res.recognizedSheets.push(sheetLabel);
+      const rows: any[] = normalizeRows(XLSX.utils.sheet_to_json(sheet, { defval: "" }));
+      const columns = rows[0] ? Object.keys(rows[0]).map((k) => String(k)) : [];
+      const counts = res.consignees;
+      const ops: ImportOperation[] = [];
+      const seen = new Set<string>();
+      res.sheets.push({
+        sheetName: sheetLabel,
+        recognized: true,
+        rows: rows.length,
+        columns,
+        processed: 0,
+        skippedNoKey: 0,
+        operations: ops,
       });
-      if (existing) {
-        await supabase.from("memos").update(row).eq("id", existing.id);
-      } else {
-        await supabase.from("memos").insert({ ...row, memo_number: memoNumber, is_deleted: r["Is Deleted"] === "Yes" });
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i] as Record<string, any>;
+        const rowNum = i + 2;
+        const companyName = cellStr(r, "companyName");
+        if (!companyName) {
+          counts.failed++;
+          res.sheets[res.sheets.length - 1].skippedNoKey++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key: "", operation: "failed" });
+          continue;
+        }
+        const key = companyName;
+        if (seen.has(key.toLowerCase())) {
+          counts.duplicate++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "duplicate" });
+          continue;
+        }
+        seen.add(key.toLowerCase());
+        const row = consigneeToRow({
+          companyName,
+          contactPerson: cellStr(r, "contactPerson"),
+          phone: cellStr(r, "phone"),
+          city: cellStr(r, "city"),
+          state: cellStr(r, "state"),
+          address: cellStr(r, "address"),
+          remarks: cellStr(r, "remarks"),
+        });
+        const { data: found, error: findErr } = await supabase
+          .from("consignees")
+          .select("id, is_deleted")
+          .ilike("company_name", key)
+          .limit(1);
+        if (findErr) {
+          counts.failed++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(findErr) });
+          if (debug) console.error(`[import/consignees/${rowNum}] lookup: ${findErr.message}`);
+          continue;
+        }
+        const existing = (found ?? [])[0];
+        if (existing) {
+          if (existing.is_deleted) {
+            const { error } = await supabase
+              .from("consignees")
+              .update({ ...row, is_deleted: false, deleted_at: null })
+              .eq("id", existing.id);
+            if (error) {
+              counts.failed++;
+              ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(error) });
+              if (debug) console.error(`[import/consignees/${rowNum}] restore: ${error.message}`);
+            } else {
+              counts.restored++;
+              ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "restored" });
+            }
+          } else {
+            counts.skipped++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "skipped" });
+          }
+        } else {
+          const { error } = await supabase.from("consignees").insert({ ...row, is_deleted: false });
+          if (error) {
+            counts.failed++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(error) });
+            if (debug) console.error(`[import/consignees/${rowNum}] insert: ${error.message}`);
+          } else {
+            counts.inserted++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "inserted" });
+          }
+        }
       }
-      mCount++;
     }
   }
 
-  return { trucks: tCount, consignees: cCount, memos: mCount };
+  // ---- 2. Fleet (trucks) ----
+  {
+    const sheet = getSheet("trucks");
+    if (sheet) {
+      const sheetLabel = sheetNameOf("trucks");
+      res.recognizedSheets.push(sheetLabel);
+      const rows: any[] = normalizeRows(XLSX.utils.sheet_to_json(sheet, { defval: "" }));
+      const columns = rows[0] ? Object.keys(rows[0]).map((k) => String(k)) : [];
+      const counts = res.trucks;
+      const ops: ImportOperation[] = [];
+      const seen = new Set<string>();
+      res.sheets.push({
+        sheetName: sheetLabel,
+        recognized: true,
+        rows: rows.length,
+        columns,
+        processed: 0,
+        skippedNoKey: 0,
+        operations: ops,
+      });
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i] as Record<string, any>;
+        const rowNum = i + 2;
+        const truckNumber = cellStr(r, "truckNumber");
+        if (!truckNumber) {
+          counts.failed++;
+          res.sheets[res.sheets.length - 1].skippedNoKey++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key: "", operation: "failed" });
+          continue;
+        }
+        const key = truckNumber;
+        if (seen.has(key.toLowerCase())) {
+          counts.duplicate++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "duplicate" });
+          continue;
+        }
+        seen.add(key.toLowerCase());
+        const row = truckToRow({
+          truckNumber,
+          ownerName: cellStr(r, "ownerName"),
+          ownerPhone: cellStr(r, "ownerPhone"),
+          driverName: cellStr(r, "driverName"),
+          driverPhone: cellStr(r, "driverPhone"),
+          insuranceExpiry: cellDate(r, "insuranceExpiry"),
+          remarks: cellStr(r, "remarks"),
+        });
+        const { data: found, error: findErr } = await supabase
+          .from("fleet_trucks")
+          .select("id, is_deleted")
+          .ilike("truck_number", key)
+          .limit(1);
+        if (findErr) {
+          counts.failed++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(findErr) });
+          if (debug) console.error(`[import/fleet/${rowNum}] lookup: ${findErr.message}`);
+          continue;
+        }
+        const existing = (found ?? [])[0];
+        if (existing) {
+          if (existing.is_deleted) {
+            const { error } = await supabase
+              .from("fleet_trucks")
+              .update({ ...row, is_deleted: false, deleted_at: null })
+              .eq("id", existing.id);
+            if (error) {
+              counts.failed++;
+              ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(error) });
+              if (debug) console.error(`[import/fleet/${rowNum}] restore: ${error.message}`);
+            } else {
+              counts.restored++;
+              ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "restored" });
+            }
+          } else {
+            counts.skipped++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "skipped" });
+          }
+        } else {
+          const { error } = await supabase.from("fleet_trucks").insert({ ...row, is_deleted: false });
+          if (error) {
+            counts.failed++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(error) });
+            if (debug) console.error(`[import/fleet/${rowNum}] insert: ${error.message}`);
+          } else {
+            counts.inserted++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "inserted" });
+          }
+        }
+      }
+    }
+  }
+
+  // ---- 3. Memos (re-link FK IDs from the restored reference data) ----
+  const consigneeIdBy = new Map<string, string>();
+  const truckIdBy = new Map<string, string>();
+  {
+    const { data: consigneesData, error: errC } = await supabase
+      .from("consignees")
+      .select("id, company_name, is_deleted");
+    if (!errC) {
+      (consigneesData ?? []).forEach((c) => {
+        if (c && typeof c.company_name === "string" && c.company_name) {
+          consigneeIdBy.set(c.company_name.toLowerCase(), c.id as string);
+        }
+      });
+    }
+    const { data: trucksData, error: errT } = await supabase
+      .from("fleet_trucks")
+      .select("id, truck_number, is_deleted");
+    if (!errT) {
+      (trucksData ?? []).forEach((t) => {
+        if (t && typeof t.truck_number === "string" && t.truck_number) {
+          truckIdBy.set(t.truck_number.toLowerCase(), t.id as string);
+        }
+      });
+    }
+  }
+
+  const memoSheet = getSheet("memos");
+  if (memoSheet) {
+    const sheetLabel = sheetNameOf("memos");
+    res.recognizedSheets.push(sheetLabel);
+    const rows: any[] = normalizeRows(XLSX.utils.sheet_to_json(memoSheet, { defval: "" }));
+    const columns = rows[0] ? Object.keys(rows[0]).map((k) => String(k)) : [];
+    const counts = res.memos;
+    const ops: ImportOperation[] = [];
+    const seen = new Set<string>();
+    res.sheets.push({
+      sheetName: sheetLabel,
+      recognized: true,
+      rows: rows.length,
+      columns,
+      processed: 0,
+      skippedNoKey: 0,
+      operations: ops,
+    });
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] as Record<string, any>;
+      const rowNum = i + 2;
+      const memoNumber = cellStr(r, "memoNumber");
+      if (!memoNumber) {
+        counts.failed++;
+        res.sheets[res.sheets.length - 1].skippedNoKey++;
+        ops.push({ sheet: sheetLabel, row: rowNum, key: "", operation: "failed" });
+        continue;
+      }
+      const key = memoNumber;
+      if (seen.has(key.toLowerCase())) {
+        counts.duplicate++;
+        ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "duplicate" });
+        continue;
+      }
+      seen.add(key.toLowerCase());
+      const truckNumberName = cellStr(r, "truckNumber");
+      const consigneeNameName = cellStr(r, "consigneeName");
+      const row = memoToRow({
+        dispatchDate: cellDate(r, "dispatchDate"),
+        fromLocation: cellStr(r, "fromLocation"),
+        toLocation: cellStr(r, "toLocation"),
+        transportName: cellStr(r, "transportName"),
+        truckNumber: truckNumberName,
+        consigneeName: consigneeNameName,
+        driverName: cellStr(r, "driverName"),
+        ownerName: cellStr(r, "ownerName"),
+        ownerPhone: cellStr(r, "ownerPhone"),
+        materialName: cellStr(r, "materialName"),
+        weightTons: cellNum(r, "weightTons"),
+        ratePerTon: cellNum(r, "ratePerTon"),
+        netFreight: cellNum(r, "netFreight"),
+        advance: cellNum(r, "advance"),
+        balance: cellNum(r, "balance"),
+        commission: cellNum(r, "commission"),
+        loadingCharges: cellNum(r, "loadingCharges"),
+        tds: cellNum(r, "tds"),
+        goodsMamuli: cellNum(r, "goodsMamuli"),
+        totalExpenses: cellNum(r, "totalExpenses"),
+        paidBy: cellStr(r, "paidBy"),
+        paymentMethod: cellStr(r, "paymentMethod"),
+        finalPayable: cellNum(r, "finalPayable"),
+        finalPaymentDate: cellDate(r, "finalPaymentDate"),
+        status: (cellStr(r, "status") || "Dispatched") as Memo["status"],
+        remarks: cellStr(r, "remarks"),
+        description: cellStr(r, "description"),
+        gcNo: cellStr(r, "gcNo"),
+        totalHire: cellNum(r, "totalHire"),
+        paidAt: cellStr(r, "paidAt"),
+        localDriverGuide: cellNum(r, "localDriverGuide"),
+        unloadingDate: cellDate(r, "unloadingDate"),
+        lrReceivedDate: cellDate(r, "lrReceivedDate"),
+        lrSubmittedDate: cellDate(r, "lrSubmittedDate"),
+        internalNotes: cellStr(r, "internalNotes"),
+        isDraft: cellStr(r, "isDraft").toLowerCase() === "yes",
+      });
+      const knownTruckId = truckNumberName ? (truckIdBy.get(truckNumberName.toLowerCase()) ?? null) : null;
+      const knownConsigneeId = consigneeNameName
+        ? (consigneeIdBy.get(consigneeNameName.toLowerCase()) ?? null)
+        : null;
+      row.truck_id = knownTruckId;
+      row.consignee_id = knownConsigneeId;
+      const { data: found, error: findErr } = await supabase
+        .from("memos")
+        .select("id, is_deleted")
+        .eq("memo_number", key)
+        .limit(1);
+      if (findErr) {
+        counts.failed++;
+        ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(findErr) });
+        if (debug) console.error(`[import/memos/${rowNum}] lookup: ${findErr.message}`);
+        continue;
+      }
+      const existing = (found ?? [])[0];
+      if (existing) {
+        if (existing.is_deleted) {
+          const { error } = await supabase
+            .from("memos")
+            .update({ ...row, is_deleted: false, deleted_at: null })
+            .eq("id", existing.id);
+          if (error) {
+            counts.failed++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(error) });
+            if (debug) console.error(`[import/memos/${rowNum}] restore: ${error.message}`);
+          } else {
+            counts.restored++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "restored" });
+          }
+        } else {
+          counts.skipped++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "skipped" });
+        }
+      } else {
+        const wasDeleted = cellStr(r, "isDeleted").toLowerCase() === "yes";
+        const { error } = await supabase.from("memos").insert({ ...row, memo_number: memoNumber, is_deleted: wasDeleted });
+        if (error) {
+          counts.failed++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(error) });
+          if (debug) console.error(`[import/memos/${rowNum}] insert: ${error.message}`);
+        } else {
+          counts.inserted++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "inserted" });
+        }
+      }
+    }
+  }
+
+  // ---- 4. Transport List (entry_number key; overridden_fields preserved) ----
+  const transportSheet = getSheet("transport");
+  if (transportSheet) {
+    const sheetLabel = sheetNameOf("transport");
+    res.recognizedSheets.push(sheetLabel);
+    const rows: any[] = normalizeRows(XLSX.utils.sheet_to_json(transportSheet, { defval: "" }));
+    const columns = rows[0] ? Object.keys(rows[0]).map((k) => String(k)) : [];
+    const counts = res.transports;
+    const ops: ImportOperation[] = [];
+    const seen = new Set<string>();
+    res.sheets.push({
+      sheetName: sheetLabel,
+      recognized: true,
+      rows: rows.length,
+      columns,
+      processed: 0,
+      skippedNoKey: 0,
+      operations: ops,
+    });
+
+    const opt = (r: Record<string, any>, field: string): string | undefined => {
+      const val = cellVal(r, field);
+      return val === undefined || val === "" ? undefined : String(val);
+    };
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] as Record<string, any>;
+      const rowNum = i + 2;
+      const entryNumber = cellStr(r, "entryNumber");
+      if (!entryNumber) {
+        counts.failed++;
+        res.sheets[res.sheets.length - 1].skippedNoKey++;
+        ops.push({ sheet: sheetLabel, row: rowNum, key: "", operation: "failed" });
+        continue;
+      }
+      const key = entryNumber;
+      if (seen.has(key.toLowerCase())) {
+        counts.duplicate++;
+        ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "duplicate" });
+        continue;
+      }
+      seen.add(key.toLowerCase());
+
+      const input: Partial<TransportEntry> = {
+        entryNumber,
+        dispatchDate: cellDate(r, "dispatchDate"),
+        fromLocation: cellStr(r, "fromLocation"),
+        toLocation: cellStr(r, "toLocation"),
+        transportName: cellStr(r, "transportName"),
+        truckNumber: cellStr(r, "truckNumber"),
+        driverName: cellStr(r, "driverName"),
+        ownerName: cellStr(r, "ownerName"),
+        ownerPhone: cellStr(r, "ownerPhone"),
+        consigneeName: cellStr(r, "consigneeName"),
+        materialName: cellStr(r, "materialName"),
+        weightTons: cellNum(r, "weightTons"),
+        ratePerTon: cellNum(r, "ratePerTon"),
+        netFreight: cellNum(r, "netFreight"),
+        advance: cellNum(r, "advance"),
+        balance: cellNum(r, "balance"),
+        unloadingDate: cellDate(r, "unloadingDate"),
+        haltingDate: cellDate(r, "haltingDate"),
+        haltingCharge: cellNum(r, "haltingCharge"),
+        lrReceivedDate: cellDate(r, "lrReceivedDate"),
+        lrSubmittedDate: cellDate(r, "lrSubmittedDate"),
+        description: opt(r, "description"),
+        gcNo: opt(r, "gcNo"),
+        totalHire: cellNum(r, "totalHire"),
+        paidAt: opt(r, "paidAt"),
+        localDriverGuide: cellNum(r, "localDriverGuide"),
+        commission: cellNum(r, "commission"),
+        loadingCharges: cellNum(r, "loadingCharges"),
+        tds: cellNum(r, "tds"),
+        goodsMamuli: cellNum(r, "goodsMamuli"),
+        totalExpenses: cellNum(r, "totalExpenses"),
+        paidBy: cellStr(r, "paidBy"),
+        paymentMethod: cellStr(r, "paymentMethod"),
+        finalPayable: cellNum(r, "finalPayable"),
+        finalPaymentDate: cellDate(r, "finalPaymentDate"),
+        status: (cellStr(r, "status") || "Dispatched") as TransportEntry["status"],
+        remarks: opt(r, "remarks"),
+        isDeleted: cellStr(r, "isDeleted").toLowerCase() === "yes",
+      };
+      let overridden: Record<string, boolean> | undefined;
+      {
+        const raw = cellVal(r, "overriddenFields");
+        if (typeof raw === "string" && raw.trim()) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") overridden = parsed as Record<string, boolean>;
+          } catch {
+            // Non-fatal â€” legacy backups may not carry this column.
+          }
+        }
+      }
+      const row = entryToRow(input);
+      if (overridden) row.overridden_fields = overridden;
+
+      const { data: found, error: findErr } = await supabase
+        .from("transport_list")
+        .select("id, is_deleted")
+        .eq("entry_number", key)
+        .limit(1);
+      if (findErr) {
+        counts.failed++;
+        ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(findErr) });
+        if (debug) console.error(`[import/transport/${rowNum}] lookup: ${findErr.message}`);
+        continue;
+      }
+      const existing = (found ?? [])[0];
+      if (existing) {
+        if (existing.is_deleted) {
+          const { error } = await supabase
+            .from("transport_list")
+            .update({ ...row, is_deleted: false, deleted_at: null })
+            .eq("id", existing.id);
+          if (error) {
+            counts.failed++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(error) });
+            if (debug) console.error(`[import/transport/${rowNum}] restore: ${error.message}`);
+          } else {
+            counts.restored++;
+            ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "restored" });
+          }
+        } else {
+          counts.skipped++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "skipped" });
+        }
+      } else {
+        const { error } = await supabase
+          .from("transport_list")
+          .insert({ ...row, entry_number: entryNumber, is_deleted: false });
+        if (error) {
+          counts.failed++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "failed", ...capErr(error) });
+          if (debug) console.error(`[import/transport/${rowNum}] insert: ${error.message}`);
+        } else {
+          counts.inserted++;
+          ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "inserted" });
+        }
+      }
+    }
+  }
+
+  // ---- 5. Settings (restore-able camelCase profile) ----
+  const settingsSheet = getSheet("settings");
+  if (settingsSheet) {
+    const sheetLabel = sheetNameOf("settings");
+    res.recognizedSheets.push(sheetLabel);
+    const rows: any[] = normalizeRows(XLSX.utils.sheet_to_json(settingsSheet, { defval: "" }));
+    res.sheets.push({
+      sheetName: sheetLabel,
+      recognized: true,
+      rows: rows.length,
+      columns: rows[0] ? Object.keys(rows[0]).map((k) => String(k)) : [],
+      processed: rows.length,
+      skippedNoKey: 0,
+      operations: [],
+    });
+    if (rows.length > 0) {
+      const s = rows[0] as Record<string, any>;
+      const patch: Partial<Settings> = {};
+      const pick = (field: string): string | undefined => {
+        const anyVal = cellVal(s, field);
+        return anyVal === undefined || anyVal === null ? undefined : String(anyVal);
+      };
+      const companyName = pick("companyNameSettings");
+      const address = pick("addressSettings");
+      const phone = pick("phoneSettings");
+      const email = pick("emailSettings");
+      const website = pick("websiteSettings");
+      const logoUrl = pick("logoUrlSettings");
+      const gst = pick("gstSettings");
+      const jurisdictionText = pick("jurisdictionTextSettings");
+      const terms = pick("termsSettings");
+      const darkModeRaw = pick("darkModeSettings");
+      if (companyName !== undefined) patch.companyName = companyName;
+      if (address !== undefined) patch.address = address;
+      if (phone !== undefined) patch.phone = phone;
+      if (email !== undefined) patch.email = email;
+      if (website !== undefined) patch.website = website;
+      if (logoUrl !== undefined) patch.logoUrl = logoUrl;
+      if (gst !== undefined) patch.gst = gst;
+      if (jurisdictionText !== undefined) patch.jurisdictionText = jurisdictionText;
+      if (terms !== undefined) patch.terms = terms;
+      if (darkModeRaw !== undefined)
+        patch.darkMode = String(darkModeRaw).toLowerCase() === "true" || darkModeRaw === "true";
+      if (Object.keys(patch).length > 0) {
+        try {
+          await updateSettings(patch);
+          res.settingsUpdated = true;
+        } catch (e) {
+          console.error("[import/settings] failed:", e);
+        }
+      }
+    }
+  }
+
+  // Every sheet that was not claimed by a supported kind gets an honest report:
+  // row count + the headers we saw, so "no supported worksheets" is never a
+  // silent zero — the UI can distinguish a truly blank sheet from an
+  // unrecognized-but-populated one.
+  res.unknownSheets = wb.SheetNames.filter((_, i) => !claimed.has(i));
+  for (const n of res.unknownSheets) {
+    const ws = wb.Sheets[n];
+    const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+    const headers = ((grid[0] ?? []) as any[]).map((x) => String(x)).filter((x) => x !== "");
+    res.sheets.push({
+      sheetName: n,
+      recognized: false,
+      rows: Math.max(0, grid.length - (headers.length ? 1 : 0)),
+      columns: headers,
+      processed: 0,
+      skippedNoKey: 0,
+      operations: [],
+    });
+  }
+
+  // Refresh the UI stores (both dataStore and transport list re-query via realtime,
+  // but this guarantees an immediate refresh regardless of subscription timing).
+  try {
+    emit();
+  } catch {
+    // Non-fatal: subscriptions clean up lazily.
+  }
+  try {
+    emitTransport();
+  } catch {
+    // Non-fatal.
+  }
+
+  if (debug) {
+    console.info("[import] result:", res);
+  }
+  return res;
 }

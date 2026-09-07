@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useTransportData } from "@/lib/useTransportStore";
 import { getTransportEntry, deleteTransportEntry, type TransportEntry } from "@/lib/transportListStore";
 import { formatDate, formatMoney } from "@/lib/format";
+import { formatDisplayText } from "@/lib/textUtils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Pencil, Trash2 } from "lucide-react";
@@ -73,32 +74,32 @@ function TransportEntryView() {
           <Row label="Entry Number" value={<span className="font-mono">{entry.entryNumber}</span>} />
           <Row label="Dispatch Date" value={formatDate(entry.dispatchDate)} />
           <Row label="Status" value={<StatusBadge status={entry.status} />} />
-          <Row label="Remarks" value={entry.remarks || "—"} />
+          <Row label="Remarks" value={formatDisplayText(entry.remarks) || "—"} />
         </Section>
 
         <Section title="Transport Information">
-          <Row label="From" value={entry.fromLocation || "—"} />
-          <Row label="To" value={entry.toLocation || "—"} />
-          <Row label="Transport Name" value={entry.transportName || "—"} />
-          <Row label="Consignee" value={entry.consigneeName || "—"} />
+          <Row label="From" value={formatDisplayText(entry.fromLocation) || "—"} />
+          <Row label="To" value={formatDisplayText(entry.toLocation) || "—"} />
+          <Row label="Transport Name" value={formatDisplayText(entry.transportName) || "—"} />
+          <Row label="Consignee" value={formatDisplayText(entry.consigneeName) || "—"} />
         </Section>
 
         <Section title="Vehicle Information">
           <Row label="Truck Number" value={entry.truckNumber || "—"} />
-          <Row label="Driver Name" value={entry.driverName || "—"} />
-          <Row label="Owner Name" value={entry.ownerName || "—"} />
+          <Row label="Driver Name" value={formatDisplayText(entry.driverName) || "—"} />
+          <Row label="Owner Name" value={formatDisplayText(entry.ownerName) || "—"} />
           <Row label="Owner Phone" value={entry.ownerPhone || "—"} />
         </Section>
 
         <Section title="Goods Information">
-          <Row label="Material" value={entry.materialName || "—"} />
+          <Row label="Material" value={formatDisplayText(entry.materialName) || "—"} />
           <Row label="Weight (tons)" value={entry.weightTons} />
           <Row label="Rate/Ton (Transport)" value={formatMoney(entry.ratePerTon)} />
           <Row label="Unloading Date" value={formatDate(entry.unloadingDate)} />
           <Row label="Halting Charge (₹)" value={formatMoney(entry.haltingCharge)} />
           <Row label="LR Received Date" value={formatDate(entry.lrReceivedDate)} />
           <Row label="LR Submitted Date" value={formatDate(entry.lrSubmittedDate)} />
-          <Row label="Description" value={entry.description || "—"} />
+          <Row label="Description" value={formatDisplayText(entry.description) || "—"} />
         </Section>
 
         <Section title="Payment Information">

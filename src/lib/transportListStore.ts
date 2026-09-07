@@ -169,7 +169,7 @@ const FIELD_MAP: Record<string, string> = {
   };
 }
 
-function entryToRow(e: Partial<TransportEntryInput>): Record<string, unknown> {
+export function entryToRow(e: Partial<TransportEntryInput>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   for (const [key, col] of Object.entries(FIELD_MAP)) {
     const val = (e as Record<string, unknown>)[key];
@@ -187,7 +187,7 @@ export function subscribeTransport(fn: () => void) {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
-function emit() {
+export function emit() {
   listeners.forEach((l) => l());
 }
 

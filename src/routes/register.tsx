@@ -6,6 +6,7 @@ import {
   ALL_MEMO_STATUSES, type Memo, type FleetTruck, type Consignee, type MemoStatus,
 } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
+import { formatDisplayText } from "@/lib/textUtils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -366,8 +367,8 @@ function RegisterPage() {
             { key: "memoNumber", label: "Memo #", render: (r) => <span className="inline-flex items-center"><Link to="/memo/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.memoNumber}</Link>{r.isDraft && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Draft</span>}</span> },
             { key: "dispatch", label: "Dispatch", render: (r) => <span className="whitespace-nowrap font-semibold text-blue-700">{formatDate(r.dispatchDate)}</span> },
             { key: "truck", label: "Truck", render: (r) => <span className="font-bold whitespace-nowrap text-navy underline decoration-navy/30 underline-offset-2">{truckLabel(r)}</span> },
-            { key: "transport", label: "Transport", render: (r) => <span className="font-semibold text-navy">{r.transportName}</span> },
-            { key: "destination", label: "Destination", render: (r) => <span className="font-bold text-navy">{r.toLocation}</span> },
+            { key: "transport", label: "Transport", render: (r) => <span className="font-semibold text-navy">{formatDisplayText(r.transportName)}</span> },
+            { key: "destination", label: "Destination", render: (r) => <span className="font-bold text-navy">{formatDisplayText(r.toLocation)}</span> },
             { key: "rate", label: "Rate/Ton", align: "right", render: (r) => formatMoney(r.ratePerTon) },
             { key: "weight", label: "Weight", align: "right", render: (r) => r.weightTons },
             { key: "netFreight", label: "Net Freight", align: "right", render: (r) => formatMoney(r.netFreight) },
@@ -376,7 +377,7 @@ function RegisterPage() {
             { key: "unloading", label: "Unloading", render: (r) => <span className="whitespace-nowrap">{formatDate(r.unloadingDate)}</span> },
             { key: "lrRec", label: "LR Rec.", render: (r) => <span className="whitespace-nowrap">{formatDate(r.lrReceivedDate)}</span> },
             { key: "lrSub", label: "LR Sub.", render: (r) => <span className="whitespace-nowrap">{formatDate(r.lrSubmittedDate)}</span> },
-            { key: "remarks", label: "Remarks", render: (r) => <span className="text-sm text-muted-foreground">{r.remarks || "—"}</span> },
+            { key: "remarks", label: "Remarks", render: (r) => <span className="text-sm text-muted-foreground">{formatDisplayText(r.remarks) || "—"}</span> },
             { key: "finalPayable", label: "Final Payable", align: "right", render: (r) => formatMoney(r.finalPayable) },
             { key: "finalPayDate", label: "Final Pay Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.finalPaymentDate)}</span> },
             { key: "status", label: "Status", render: (r) => <StatusBadge status={r.status as MemoStatus} /> },

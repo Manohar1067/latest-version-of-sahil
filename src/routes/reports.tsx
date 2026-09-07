@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import { getMemos, getTrucks, type Memo, type FleetTruck } from "@/lib/dataStore";
 import { formatMoney, formatDate } from "@/lib/format";
+import { formatDisplayText } from "@/lib/textUtils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -316,7 +317,7 @@ function ReportsPage() {
                       <td className="px-3 py-2 font-semibold text-blue-600">{m.memoNumber}</td>
                       <td className="px-3 py-2">{formatDate(m.dispatchDate)}</td>
                       <td className="px-3 py-2">{t?.truckNumber}</td>
-                      <td className="px-3 py-2 font-semibold">{m.toLocation}</td>
+                      <td className="px-3 py-2 font-semibold">{formatDisplayText(m.toLocation)}</td>
                       <td className="px-3 py-2 text-right">{formatMoney(m.netFreight)}</td>
                       <td className="px-3 py-2 text-right">{formatMoney(m.balance)}</td>
                       <td className="px-3 py-2"><StatusBadge status={m.status} /></td>

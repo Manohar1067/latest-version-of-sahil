@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import { getMemo, getTruck, getConsignee, getSettings, type Memo, type FleetTruck, type Consignee, type Settings } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
+import { formatDisplayText } from "@/lib/textUtils";
 import { Button } from "@/components/ui/button";
 import { Printer, Download, ArrowLeft, Pencil, ChevronDown, Phone, Mail, MapPin, Share2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -309,22 +310,22 @@ export const ReceiptPage = forwardRef<
             <span style={cellLabel}>From:</span>
           </div>
           <div style={{ width: "30%", padding: "5px 8px", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center", overflow: "hidden" }}>
-            <span style={cellValue}>{memo.fromLocation || "—"}</span>
+            <span style={cellValue}>{formatDisplayText(memo.fromLocation) || "—"}</span>
           </div>
           <div style={{ width: "15%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
             <span style={cellLabel}>To:</span>
           </div>
           <div style={{ width: "35%", padding: "5px 8px", display: "flex", alignItems: "center", overflow: "hidden" }}>
-            <span style={cellValue}>{memo.toLocation || "—"}</span>
+            <span style={cellValue}>{formatDisplayText(memo.toLocation) || "—"}</span>
           </div>
         </div>
         {detailRow("G.C. No.:", memo.gcNo || "—")}
-        {detailRow("Article:", memo.materialName || "—")}
-        {detailRow("Lorry Owner Name:", memo.ownerName || "—")}
-        {detailRow("Driver Name:", memo.driverName || "—")}
-        {detailRow("Consignor:", memo.fromLocation || "—")}
-        {detailRow("Consignee:", consigneeName)}
-        {detailRow("Description:", memo.description || "—")}
+        {detailRow("Article:", formatDisplayText(memo.materialName) || "—")}
+        {detailRow("Lorry Owner Name:", formatDisplayText(memo.ownerName) || "—")}
+        {detailRow("Driver Name:", formatDisplayText(memo.driverName) || "—")}
+        {detailRow("Consignor:", formatDisplayText(memo.fromLocation) || "—")}
+        {detailRow("Consignee:", formatDisplayText(consigneeName) || "—")}
+        {detailRow("Description:", formatDisplayText(memo.description) || "—")}
         {/* Per Ton Rs. | value | Weight | value — side-by-side on one row */}
         <div className="flex" style={{ borderBottom: `0px solid ${NAVY}` }}>
           <div style={{ width: "25%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
@@ -373,7 +374,7 @@ export const ReceiptPage = forwardRef<
             </div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
               <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Paid At:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{memo.paidAt || "—"}</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatDisplayText(memo.paidAt) || "—"}</div>
             </div>
           </div>
 
@@ -387,7 +388,7 @@ export const ReceiptPage = forwardRef<
             <div style={{ borderTop: `1px solid ${NAVY}` }} />
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px", minHeight: 0 }}>
               <div style={{ fontSize: "14px", fontWeight: 800, color: "#3A4356" }}>Transport:</div>
-              <div style={{ fontSize: "20px", fontWeight: 900, color: NAVY, lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere", wordBreak: "break-word" }}>{memo.transportName || "—"}</div>
+              <div style={{ fontSize: "20px", fontWeight: 900, color: NAVY, lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere", wordBreak: "break-word" }}>{formatDisplayText(memo.transportName) || "—"}</div>
             </div>
           </div>
 
@@ -564,7 +565,7 @@ function MemoView() {
   };
 
   const shareText = () =>
-    `${settings?.companyName ?? "Sahil Road Lines"}\nMemo ${memo?.memoNumber}\nDate: ${formatDate(memo?.dispatchDate ?? "")}\nTruck: ${truck?.truckNumber || memo?.truckNumber || "—"}\nMaterial: ${memo?.materialName ?? "—"}\nFinal Payable: ${formatMoney(memo?.finalPayable ?? 0)}`;
+    `${settings?.companyName ?? "Sahil Road Lines"}\nMemo ${memo?.memoNumber}\nDate: ${formatDate(memo?.dispatchDate ?? "")}\nTruck: ${truck?.truckNumber || memo?.truckNumber || "—"}\nMaterial: ${formatDisplayText(memo?.materialName) || "—"}\nFinal Payable: ${formatMoney(memo?.finalPayable ?? 0)}`;
 
   const shareWhatsApp = async () => {
     if (!memo) return;

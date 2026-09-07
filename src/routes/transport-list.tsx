@@ -8,6 +8,7 @@ import {
 } from "@/lib/transportListStore";
 import { getTrucks, getConsignees, type FleetTruck, type Consignee } from "@/lib/dataStore";
 import { formatDate, formatMoney } from "@/lib/format";
+import { formatDisplayText } from "@/lib/textUtils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -194,8 +195,8 @@ function TransportListPage() {
     { key: "entryNumber", label: "Memo Number", render: (r) => <Link to="/transport/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.entryNumber}</Link> },
     { key: "dispatch", label: "Dispatch", render: (r) => <span className="whitespace-nowrap">{formatDate(r.dispatchDate)}</span> },
     { key: "truck", label: "Truck", render: (r) => <span className="font-semibold whitespace-nowrap">{r.truckNumber || "—"}</span> },
-    { key: "transport", label: "Transport", render: (r) => r.transportName },
-    { key: "destination", label: "Destination", render: (r) => <span className="font-semibold">{r.toLocation}</span> },
+    { key: "transport", label: "Transport", render: (r) => formatDisplayText(r.transportName) },
+    { key: "destination", label: "Destination", render: (r) => <span className="font-semibold">{formatDisplayText(r.toLocation)}</span> },
     { key: "rate", label: "Rate/Ton (Transport)", align: "right", render: (r) => formatMoney(r.ratePerTon) },
     { key: "weight", label: "Weight", align: "right", render: (r) => r.weightTons },
     { key: "netFreight", label: "Net Freight", align: "right", render: (r) => formatMoney(r.netFreight) },
@@ -205,7 +206,7 @@ function TransportListPage() {
     { key: "halting", label: "Halting Charge (₹)", align: "right", render: (r) => formatMoney(r.haltingCharge) },
     { key: "lrRec", label: "LR Rec.", render: (r) => <span className="whitespace-nowrap">{formatDate(r.lrReceivedDate)}</span> },
     { key: "lrSub", label: "LR Sub.", render: (r) => <span className="whitespace-nowrap">{formatDate(r.lrSubmittedDate)}</span> },
-    { key: "remarks", label: "Remarks", render: (r) => <span className="text-sm text-muted-foreground">{r.remarks || "—"}</span> },
+    { key: "remarks", label: "Remarks", render: (r) => <span className="text-sm text-muted-foreground">{formatDisplayText(r.remarks) || "—"}</span> },
     { key: "finalPayable", label: "Final Payable", align: "right", render: (r) => formatMoney(r.finalPayable) },
     { key: "finalPayDate", label: "Final Pay Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.finalPaymentDate)}</span> },
     { key: "status", label: "Status", render: (r) => <StatusBadge status={r.status} /> },

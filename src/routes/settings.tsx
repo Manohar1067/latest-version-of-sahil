@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import {
   getSettings, updateSettings, _resetStore, exportAllDataXlsx, importAllDataXlsx, type Settings,
+  type ImportResult,
 } from "@/lib/dataStore";
 import { supabase } from "@/lib/supabaseClient";
 import { Input } from "@/components/ui/input";
@@ -48,7 +49,7 @@ function SettingsPage() {
   const [form, setForm] = useState<Settings | null>(null);
   const [uploading, setUploading] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [importSummary, setImportSummary] = useState<{ trucks: number; consignees: number; memos: number } | null>(null);
+  const [importSummary, setImportSummary] = useState<ImportResult | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
@@ -147,10 +148,16 @@ function SettingsPage() {
     try {
       const summary = await importAllDataXlsx(importFile);
       setImportSummary(summary);
-      toast.success(`Imported ${summary.memos} memos, ${summary.trucks} trucks, ${summary.consignees} consignees`);
+      const { memos, trucks, consignees, transports } = summary;
+      const inserted =
+        memos.inserted + trucks.inserted + consignees.inserted + transports.inserted;
+      const restored =
+        memos.restored + trucks.restored + consignees.restored + transports.restored;
+      const skipped = memos.skipped + trucks.skipped + consignees.skipped + transports.skipped;
+      toast.success(`Import finished: ${inserted} added, ${restored} restored, ${skipped} already present` + (summary.settingsUpdated ? ", settings updated" : ""));
       setImportFile(null);
     } catch (e) {
-      toast.error("Import failed — invalid file");
+      toast.error("Import failed — see console for details");
       console.error(e);
     }
   };
@@ -240,8 +247,10 @@ function SettingsPage() {
             <Button variant="destructive" onClick={() => setResetOpen(true)}>Reset All Data</Button>
           </div>
           <div className="mt-3 text-xs text-muted-foreground">
-            Export downloads an Excel workbook (Memos / Fleet / Consignees / Settings sheets). Import reads that workbook and merges records using
-            memo number, truck number, and company name as stable identifiers.
+            Export downloads an Excel workbook (Memos / Fleet / Consignees / Transport / Settings sheets). Import can read that workbook
+            or a single-sheet Register / Transport List export ("Sheet1"), merging records safely
+            using memo number, truck number, and company name as stable identifiers:
+            existing records are never overwritten or duplicated, records previously deleted are restored, and missing records are added.
           </div>
         </div>
       </div>
@@ -256,9 +265,9 @@ function SettingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Import Excel backup?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will import memos, trucks, and consignees from the selected Excel file.
-              Existing records with matching identifiers (memo number, truck number, company name) will be updated;
-              new records will be inserted. This action cannot be undone.
+              This will safely merge memos, trucks, consignees, and settings from the selected Excel file.
+              Records that already exist are skipped (never overwritten or duplicated); records that were previously
+              deleted are restored; missing records are added. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -275,7 +284,77 @@ function SettingsPage() {
             <AlertDialogTitle>Import complete</AlertDialogTitle>
             <AlertDialogDescription>
               {importSummary && (
-                <>Imported <b>{importSummary.memos}</b> memos, <b>{importSummary.trucks}</b> trucks, <b>{importSummary.consignees}</b> consignees.</>
+                <>
+                  <div className="space-y-2 text-left">
+                    {importSummary.recognizedSheets.length === 0 ? (
+                      <>
+                        <p className="text-destructive">
+                          No supported worksheets were found in this workbook.
+                        </p>
+                        <ul className="space-y-1 text-sm">
+                          {importSummary.sheets.map((s) => (
+                            <li key={s.sheetName}>
+                              <b>{s.sheetName}</b>
+                              {s.rows === 0
+                                ? " — no data rows (blank)."
+                                : ` — ${s.rows} row(s) present, but headers could not be recognized: ${s.columns.slice(0, 8).join(" · ")}${s.columns.length > 8 ? " …" : ""}`}
+                            </li>
+                          ))}
+                          {importSummary.sheets.length === 0 && <li>— a blank/malformed file was read; no sheets found.</li>}
+                        </ul>
+                      </>
+                    ) : (
+                      <>
+                        {[
+                          { label: "Memos", c: importSummary.memos },
+                          { label: "Transport Entries", c: importSummary.transports },
+                          { label: "Trucks", c: importSummary.trucks },
+                          { label: "Consignees", c: importSummary.consignees },
+                        ].map(({ label, c }) => (
+                          <div key={label}>
+                            <b>{label}:</b> {c.inserted + c.restored} imported ({c.inserted} added, {c.restored} restored),{" "}
+                            {c.skipped} already present, {c.failed} failed, {c.duplicate} duplicate-in-file
+                          </div>
+                        ))}
+                        {(() => {
+                          const failed = importSummary.sheets.flatMap((s) =>
+                            s.operations.filter((o) => o.operation === "failed")
+                          );
+                          if (failed.length === 0) return null;
+                          return (
+                            <details className="mt-2 max-h-56 overflow-y-auto rounded border border-border p-2 text-sm">
+                              <summary className="cursor-pointer font-medium text-destructive">
+                                {failed.length} failed row(s) — expand for details
+                              </summary>
+                              <ul className="mt-2 space-y-1">
+                                {failed.map((o, i) => (
+                                  <li key={i}>
+                                    <b>{o.key || "(no key)"}</b> (row {o.row}):
+                                    {o.code ? ` [${o.code}]` : ""} {o.message ?? "operation failed"}
+                                    {o.details ? ` — ${o.details}` : ""}
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          );
+                        })()}
+                        {importSummary.settingsUpdated && <div><b>Settings:</b> updated</div>}
+                        {importSummary.unknownSheets.length > 0 && (
+                          <p className="text-muted-foreground">
+                            Unrecognized sheet(s) — not imported:{" "}
+                            {importSummary.sheets
+                              .filter((s) => !s.recognized)
+                              .map((s) => `${s.sheetName} (${s.rows} row${s.rows === 1 ? "" : "s"})`)
+                              .join(", ")}
+                          </p>
+                        )}
+                      </>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      File: {importSummary.file.name} ({importSummary.file.size.toLocaleString()} bytes)
+                    </p>
+                  </div>
+                </>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
