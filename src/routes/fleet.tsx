@@ -33,6 +33,7 @@ function FleetPage() {
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<FleetTruck | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const filtered = (trucks ?? []).filter((t) =>
     [t.truckNumber, t.ownerName, t.driverName, t.driverPhone].some((v) => (v ?? "").toLowerCase().includes(q.toLowerCase())),
@@ -41,20 +42,30 @@ function FleetPage() {
   const openNew = () => { setForm(empty); setEditId(null); setOpen(true); };
   const openEdit = (t: FleetTruck) => { const { id, ...rest } = t; void id; setForm(rest); setEditId(t.id); setOpen(true); };
   const save = async () => {
+    if (busy) return;
     try {
       if (!form.truckNumber) return toast.error("Truck number required");
+      setBusy(true);
       if (editId) { await updateTruck(editId, form); toast.success(`Truck ${form.truckNumber} updated`); }
       else { await createTruck(form); toast.success(`Truck ${form.truckNumber} added`); }
       setOpen(false);
     } catch (e) { toast.error((e as Error).message); }
+    finally { setBusy(false); }
   };
 
   const confirmDelete = async () => {
-    if (!pendingDelete) return;
+    if (!pendingDelete || busy) return;
     const n = pendingDelete.truckNumber;
-    await deleteTruck(pendingDelete.id);
-    setPendingDelete(null);
-    toast.success(`Truck ${n} deleted`);
+    setBusy(true);
+    try {
+      await deleteTruck(pendingDelete.id);
+      setPendingDelete(null);
+      toast.success(`Truck ${n} deleted`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -134,8 +145,8 @@ function FleetPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={save}>Save</Button>
+            <Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>Cancel</Button>
+            <Button disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -147,8 +158,8 @@ function FleetPage() {
             <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} disabled={busy}>{busy ? "Deleting…" : "Delete"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

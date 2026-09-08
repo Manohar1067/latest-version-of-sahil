@@ -108,6 +108,7 @@ function NewMemo() {
   const [form, setForm] = useState<MemoInput>(emptyForm());
   const [dirty, setDirty] = useState(false);
   const [freightOverride, setFreightOverride] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!edit) {
@@ -133,7 +134,11 @@ function NewMemo() {
       }
 
       if (draft && draft.form) {
-        setForm({ ...emptyForm(), ...draft.form });
+        const restored = { ...emptyForm(), ...draft.form };
+        setForm(restored);
+        // A restored draft may carry a manually-typed Net Freight — keep the
+        // override on so the auto-calc effect cannot silently overwrite it.
+        setFreightOverride(Math.abs((restored.netFreight || 0) - Math.round((restored.weightTons || 0) * (restored.ratePerTon || 0))) > 0.01);
         if (draft.memoNumber) {
           setNextNum(draft.memoNumber);
         } else {
@@ -155,6 +160,9 @@ function NewMemo() {
         const { id, memoNumber, isDeleted, createdAt, updatedAt, deletedAt, ...rest } = m;
         void id; void memoNumber; void isDeleted; void createdAt; void updatedAt; void deletedAt;
         setForm(rest);
+        // Keep a stored manual Net Freight: opening for edit must NOT let the
+        // auto-calc effect recompute it (and later save the new value).
+        setFreightOverride(Math.abs((rest.netFreight || 0) - Math.round((rest.weightTons || 0) * (rest.ratePerTon || 0))) > 0.01);
         setNextNum(memoNumber);
       }
     });
@@ -207,6 +215,7 @@ function NewMemo() {
   const paidByOptions = useMemo(() => ["SRL", "KAREEM"], []);
 
   const submit = async (draft = false) => {
+    if (saving) return;
     if (!admin) {
       toast.error("Viewers have read-only access. Only a Super Admin can create or edit memos.");
       return;
@@ -217,6 +226,7 @@ function NewMemo() {
     if (!form.weightTons) return toast.error("Weight is required");
     if (!form.ratePerTon) return toast.error("Rate/Ton is required");
     if (!form.dispatchDate) return toast.error("Dispatch date is required");
+    setSaving(true);
     try {
       let finalForm = { ...form, isDraft: draft };
 
@@ -233,7 +243,15 @@ function NewMemo() {
         toast.success(draft ? "Draft saved" : "Memo updated");
         setDirty(false);
         if (!draft) {
-          await syncMemoToTransport(edit, finalForm);
+          // Finalizing a draft must create its transport entry — syncMemoToTransport
+          // only updates an EXISTING row, so drafts (which have none) would never
+          // appear in the Transport List otherwise.
+          const m = await getMemo(edit);
+          if (m?.isDraft) {
+            await ensureTransportEntryForMemo({ ...m, ...finalForm, isDraft: false });
+          } else {
+            await syncMemoToTransport(edit, finalForm);
+          }
         }
         nav({ to: draft ? "/register" : "/memo/$id", params: { id: edit } as never });
       } else {
@@ -247,6 +265,8 @@ function NewMemo() {
       }
     } catch (e) {
       toast.error((e as Error).message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -386,9 +406,9 @@ function NewMemo() {
 
       {/* Fixed action bar */}
       <div className="fixed bottom-0 left-60 right-0 z-10 flex justify-end gap-2 border-t bg-background/95 px-8 py-3 backdrop-blur">
-        <Button variant="outline" onClick={() => { if (!dirty || confirm("Discard unsaved changes?")) nav({ to: "/register" }); }}>Cancel</Button>
-        <Button variant="outline" onClick={() => submit(true)}>Save Draft</Button>
-        <Button onClick={() => submit(false)}>Save Memo</Button>
+        <Button variant="outline" disabled={saving} onClick={() => { if (!dirty || confirm("Discard unsaved changes?")) nav({ to: "/register" }); }}>Cancel</Button>
+        <Button variant="outline" disabled={saving} onClick={() => submit(true)}>{saving ? "Saving…" : "Save Draft"}</Button>
+        <Button disabled={saving} onClick={() => submit(false)}>{saving ? "Saving…" : "Save Memo"}</Button>
       </div>
     </AppShell>
   );

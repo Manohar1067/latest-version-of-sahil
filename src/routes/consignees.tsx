@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useState } from "react";
 import { Pencil, Trash2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +30,8 @@ function Page() {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Consignee | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const filtered = (rows ?? []).filter((r) =>
     [r.companyName, r.city, r.state, r.contactPerson, r.phone].some((v) => v.toLowerCase().includes(q.toLowerCase())),
@@ -34,12 +40,30 @@ function Page() {
   const openNew = () => { setForm(empty); setEditId(null); setOpen(true); };
   const openEdit = (c: Consignee) => { const { id, ...rest } = c; void id; setForm(rest); setEditId(c.id); setOpen(true); };
   const save = async () => {
+    if (busy) return;
     try {
       if (!form.companyName) return toast.error("Company name required");
+      setBusy(true);
       if (editId) { await updateConsignee(editId, form); toast.success("Consignee updated"); }
       else { await createConsignee(form); toast.success("Consignee added"); }
       setOpen(false);
     } catch (e) { toast.error((e as Error).message); }
+    finally { setBusy(false); }
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete || busy) return;
+    const n = pendingDelete.companyName;
+    setBusy(true);
+    try {
+      await deleteConsignee(pendingDelete.id);
+      setPendingDelete(null);
+      toast.success(`Consignee ${n} deleted`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -72,7 +96,7 @@ function Page() {
                     <td className="px-3 py-3">
                       <div className="flex justify-end gap-1">
                         <Button size="icon" variant="ghost" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                        <Button size="icon" variant="ghost" onClick={async () => { if (confirm("Delete consignee?")) { await deleteConsignee(c.id); toast.success("Deleted"); } }}>
+                        <Button size="icon" variant="ghost" onClick={() => setPendingDelete(c)}>
                           <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
                       </div>
@@ -97,9 +121,22 @@ function Page() {
             <div className="col-span-2"><Label>Address</Label><Textarea rows={2} value={form.address} onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))} className="mt-1.5" /></div>
             <div className="col-span-2"><Label>Remarks</Label><Input className="h-11 mt-1.5" value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} /></div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save}>Save</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>Cancel</Button><Button disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete consignee {pendingDelete?.companyName}?</AlertDialogTitle>
+            <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} disabled={busy}>{busy ? "Deleting…" : "Delete"}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }

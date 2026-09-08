@@ -56,6 +56,7 @@ function SettingsPage() {
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const [changingPin, setChangingPin] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Changing your OWN password needs no admin privileges — call Supabase Auth
   // directly instead of routing through the admin Edge Function.
@@ -90,7 +91,18 @@ function SettingsPage() {
 
   const set = <K extends keyof Settings>(k: K, v: Settings[K]) => setForm((f) => ({ ...(f as Settings), [k]: v }));
 
-  const save = async () => { await updateSettings(form); toast.success("Settings saved"); };
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await updateSettings(form);
+      toast.success("Settings saved");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save settings");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const uploadLogo = async (file: File) => {
     setUploading(true);
@@ -163,7 +175,7 @@ function SettingsPage() {
   };
 
   return (
-    <AppShell title="Settings" breadcrumb="Home / Settings" actions={<Button onClick={save}>Save Settings</Button>}>
+    <AppShell title="Settings" breadcrumb="Home / Settings" actions={<Button disabled={saving} onClick={save}>{saving ? "Saving…" : "Save Settings"}</Button>}>
       <div className="space-y-5 pb-24">
         <div className="card-surface p-6">
           <div className="section-title mb-2">Company Information</div>
@@ -256,7 +268,7 @@ function SettingsPage() {
       </div>
 
       <div className="fixed bottom-0 left-60 right-0 z-10 flex justify-end gap-2 border-t bg-background/95 px-8 py-3 backdrop-blur">
-        <Button onClick={save}>Save Settings</Button>
+        <Button disabled={saving} onClick={save}>{saving ? "Saving…" : "Save Settings"}</Button>
       </div>
 
       {/* Import confirm */}

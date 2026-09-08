@@ -82,6 +82,7 @@ export function AppShell({
   }, [settings?.darkMode]);
 
   const toggleDark = async () => {
+    if (!admin) return;
     const next = !dark;
     document.documentElement.classList.toggle("dark", next);
     setDark(next);
@@ -142,13 +143,15 @@ export function AppShell({
       <div className="ml-60 flex min-h-screen flex-1 flex-col">
         {/* Topbar */}
         <header className="sticky top-0 z-10 flex h-14 items-center justify-end gap-3 border-b border-border bg-background px-6">
-          <button
-            onClick={toggleDark}
-            className="rounded-full p-2 text-muted-foreground hover:bg-muted"
-            aria-label="Toggle dark mode"
-          >
-            {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-          </button>
+          {admin && (
+            <button
+              onClick={toggleDark}
+              className="rounded-full p-2 text-muted-foreground hover:bg-muted"
+              aria-label="Toggle dark mode"
+            >
+              {dark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
+          )}
           <Popover>
             <PopoverTrigger asChild>
               <button className="relative rounded-full p-2 text-muted-foreground hover:bg-muted" aria-label="Notifications">

@@ -25,22 +25,38 @@ function TrashPage() {
   const all = data ?? [];
   const [tab, setTab] = useState<string>("All");
   const [pending, setPending] = useState<TrashItem | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const rows = tab === "All" ? all : all.filter((r) => r.kind === tab);
 
   const doRestore = async (r: TrashItem) => {
-    await restoreTrashItem(r);
-    refresh();
-    toast.success(`${r.kind} ${r.label} restored`);
+    if (busy) return;
+    setBusy(true);
+    try {
+      await restoreTrashItem(r);
+      refresh();
+      toast.success(`${r.kind} ${r.label} restored`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const doPermanentDelete = async () => {
-    if (!pending) return;
+    if (!pending || busy) return;
     const { kind, label } = pending;
-    await permanentlyDeleteTrashItem(pending);
-    setPending(null);
-    refresh();
-    toast.success(`${kind} ${label} permanently deleted`);
+    setBusy(true);
+    try {
+      await permanentlyDeleteTrashItem(pending);
+      setPending(null);
+      refresh();
+      toast.success(`${kind} ${label} permanently deleted`);
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -83,10 +99,10 @@ function TrashPage() {
                   {admin && (
                     <td className="px-3 py-3">
                       <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => doRestore(r)}>
+                        <Button size="sm" variant="outline" disabled={busy} onClick={() => doRestore(r)}>
                           <RotateCcw className="mr-1 h-4 w-4" />Restore
                         </Button>
-                        <Button size="sm" variant="destructive" onClick={() => setPending(r)}>
+                        <Button size="sm" variant="destructive" disabled={busy} onClick={() => setPending(r)}>
                           <Trash2 className="mr-1 h-4 w-4" />Delete forever
                         </Button>
                       </div>
@@ -110,8 +126,8 @@ function TrashPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={doPermanentDelete}>Delete permanently</AlertDialogAction>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={busy} onClick={doPermanentDelete}>{busy ? "Deleting…" : "Delete permanently"}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -71,6 +71,13 @@ function ReportsPage() {
     return inRange.filter((m) => (focus.kind === "truck" ? m.truckId === focus.id : m.driverName === focus.id));
   }, [inRange, focus]);
 
+  /** Rows actually listed under the currently selected report type. */
+  const visibleTrips = useMemo(() => {
+    if (type === "pending") return filtered.filter((x) => x.status === "Payment Pending");
+    if (type === "lr") return filtered.filter((x) => !x.lrSubmittedDate);
+    return filtered;
+  }, [filtered, type]);
+
   const revenue = filtered.reduce((s, x) => s + x.netFreight, 0);
   const expense = filtered.reduce((s, x) => s + x.totalExpenses, 0);
   const profit = revenue - expense;
@@ -127,7 +134,11 @@ function ReportsPage() {
   };
 
   const exportSummary = (fmt: "xlsx" | "csv") => {
-    const rows = filtered.map((m) => {
+    // Export exactly what the selected report type displays — not every memo
+    // in the date range. Otherwise "Pending Payment" / "LR Pending" exports
+    // silently included rows the user never saw on screen.
+    const visible = visibleTrips;
+    const rows = visible.map((m) => {
       const t = trucks?.find((x) => x.id === m.truckId);
       return {
         "Memo #": m.memoNumber, "Date": formatDate(m.dispatchDate),
@@ -302,15 +313,14 @@ function ReportsPage() {
       )}
       {(type === "summary" || type === "trips" || type === "pending" || type === "lr") && (
         <div className="card-surface p-5">
-          <h3 className="mb-3">Trips ({filtered.length})</h3>
+          <h3 className="mb-3">Trips ({visibleTrips.length})</h3>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1000px] text-left">
               <thead className="border-b bg-muted/40 text-xs uppercase text-muted-foreground">
                 <tr><th className="px-3 py-2">Memo #</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Truck</th><th className="px-3 py-2">Destination</th><th className="px-3 py-2 text-right">Net Freight</th><th className="px-3 py-2 text-right">Balance</th><th className="px-3 py-2">Status</th></tr>
               </thead>
               <tbody>
-                {(type === "pending" ? filtered.filter((x) => x.status === "Payment Pending")
-                  : type === "lr" ? filtered.filter((x) => !x.lrSubmittedDate) : filtered).map((m) => {
+                {visibleTrips.map((m) => {
                   const t = trucks?.find((x) => x.id === m.truckId);
                   return (
                     <tr key={m.id} className="border-b">
@@ -324,7 +334,7 @@ function ReportsPage() {
                     </tr>
                   );
                 })}
-                {filtered.length === 0 && (<tr><td colSpan={7} className="py-10 text-center text-muted-foreground">No records</td></tr>)}
+                {visibleTrips.length === 0 && (<tr><td colSpan={7} className="py-10 text-center text-muted-foreground">No records for this report</td></tr>)}
               </tbody>
             </table>
           </div>

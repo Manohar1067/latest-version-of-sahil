@@ -408,8 +408,12 @@ function TransportListPage() {
             <AlertDialogAction onClick={async () => {
               if (confirmDel) {
                 const n = confirmDel.entryNumber;
-                await deleteTransportEntry(confirmDel.id);
-                toast.success(`Entry ${n} deleted`);
+                try {
+                  await deleteTransportEntry(confirmDel.id);
+                  toast.success(`Entry ${n} deleted`);
+                } catch (e) {
+                  toast.error((e as Error).message);
+                }
                 setConfirmDel(null);
               }
             }}>Delete</AlertDialogAction>

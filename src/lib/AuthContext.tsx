@@ -133,7 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function loadProfile(userId: string) {
     const { data, error } = await supabase
       .from("profiles")
-      .select("*")
+      .select("id, auth_user_id, name, email, phone, role, active, updated_at")
       .eq("auth_user_id", userId)
       .maybeSingle();
     if (error || !data) {

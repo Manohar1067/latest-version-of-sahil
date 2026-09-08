@@ -1254,6 +1254,22 @@ function cellNum(row: Record<string, any>, field: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** Parses a boolean cell. Accepts the app's own export format (true/false booleans,
+ *  which json_to_sheet writes as TRUE/FALSE), hand-typed "Yes"/"No", and numeric
+ *  1/0. Anything else (empty, "—", "N/A") -> false. */
+function cellBool(row: Record<string, any>, field: string): boolean {
+  const v = cellVal(row, field);
+  if (v === undefined || v === null) return false;
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  const s = String(v)
+    .trim()
+    .replace(/^[!"']|[!"']$/g, "")
+    .toLowerCase();
+  if (s === "") return false;
+  return s === "yes" || s === "y" || s === "true" || s === "t" || s === "1" || s === "x";
+}
+
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[Tt ]|$)/;
 const DMY_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 
@@ -1720,7 +1736,7 @@ export async function importAllDataXlsx(file: File): Promise<ImportResult> {
         lrReceivedDate: cellDate(r, "lrReceivedDate"),
         lrSubmittedDate: cellDate(r, "lrSubmittedDate"),
         internalNotes: cellStr(r, "internalNotes"),
-        isDraft: cellStr(r, "isDraft").toLowerCase() === "yes",
+        isDraft: cellBool(r, "isDraft"),
       });
       const knownTruckId = truckNumberName ? (truckIdBy.get(truckNumberName.toLowerCase()) ?? null) : null;
       const knownConsigneeId = consigneeNameName
@@ -1759,7 +1775,7 @@ export async function importAllDataXlsx(file: File): Promise<ImportResult> {
           ops.push({ sheet: sheetLabel, row: rowNum, key, operation: "skipped" });
         }
       } else {
-        const wasDeleted = cellStr(r, "isDeleted").toLowerCase() === "yes";
+        const wasDeleted = cellBool(r, "isDeleted");
         const { error } = await supabase.from("memos").insert({ ...row, memo_number: memoNumber, is_deleted: wasDeleted });
         if (error) {
           counts.failed++;
@@ -1854,7 +1870,7 @@ export async function importAllDataXlsx(file: File): Promise<ImportResult> {
         finalPaymentDate: cellDate(r, "finalPaymentDate"),
         status: (cellStr(r, "status") || "Dispatched") as TransportEntry["status"],
         remarks: opt(r, "remarks"),
-        isDeleted: cellStr(r, "isDeleted").toLowerCase() === "yes",
+        isDeleted: cellBool(r, "isDeleted"),
       };
       let overridden: Record<string, boolean> | undefined;
       {

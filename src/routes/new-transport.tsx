@@ -91,6 +91,7 @@ function NewTransportEntry() {
   const [form, setForm] = useState<TransportEntryInput>(emptyForm());
   const [dirty, setDirty] = useState(false);
   const [freightOverride, setFreightOverride] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (edit) {
@@ -99,6 +100,9 @@ function NewTransportEntry() {
           const { id, entryNumber, isDeleted, createdAt, updatedAt, deletedAt, ...rest } = m;
           void id; void isDeleted; void createdAt; void updatedAt; void deletedAt;
           setForm(rest);
+          // Keep a stored manual Net Freight: opening for edit must NOT let the
+          // auto-calc effect recompute it (and later save the new value).
+          setFreightOverride(Math.abs((rest.netFreight || 0) - Math.round((rest.weightTons || 0) * (rest.ratePerTon || 0))) > 0.01);
           setNextNum(entryNumber);
         }
       });
@@ -141,6 +145,7 @@ function NewTransportEntry() {
   }, [form.finalPaymentDate]);
 
   const submit = async () => {
+    if (saving) return;
     if (!admin) {
       toast.error("Viewers have read-only access. Only a Super Admin can create or edit transport entries.");
       return;
@@ -151,6 +156,7 @@ function NewTransportEntry() {
     if (!form.weightTons) return toast.error("Weight is required");
     if (!form.ratePerTon) return toast.error("Rate/Ton (Transport) is required");
     if (!form.dispatchDate) return toast.error("Dispatch date is required");
+    setSaving(true);
     try {
       await ensureConsigneeExists(form.consigneeName);
       await ensureTruckExists(form.truckNumber, form.driverName, form.ownerName, form.ownerPhone);
@@ -167,6 +173,8 @@ function NewTransportEntry() {
       }
     } catch (e) {
       toast.error((e as Error).message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -305,8 +313,8 @@ function NewTransportEntry() {
       </div>
 
       <div className="fixed bottom-0 left-60 right-0 z-10 flex justify-end gap-2 border-t bg-background/95 px-8 py-3 backdrop-blur">
-        <Button variant="outline" onClick={() => { if (!dirty || confirm("Discard unsaved changes?")) nav({ to: "/transport-list" }); }}>Cancel</Button>
-        <Button onClick={submit}>{edit ? "Save Changes" : "Save Entry"}</Button>
+        <Button variant="outline" disabled={saving} onClick={() => { if (!dirty || confirm("Discard unsaved changes?")) nav({ to: "/transport-list" }); }}>Cancel</Button>
+        <Button disabled={saving} onClick={submit}>{saving ? "Saving…" : (edit ? "Save Changes" : "Save Entry")}</Button>
       </div>
     </AppShell>
   );

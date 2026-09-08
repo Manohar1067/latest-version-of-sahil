@@ -53,14 +53,21 @@ function UserManagement() {
 
   async function loadUsers() {
     setLoading(true);
-    const { data, error } = await supabase.from("profiles").select("*").order("name");
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, auth_user_id, name, email, phone, role, active")
+      .order("name");
     if (!error) setUsers(data as UserRow[]);
     setLoading(false);
   }
 
   useEffect(() => {
+    // Only Super Admins may list users — and never fetch the profile rows at all
+    // (including the mirrored PIN column) before we know the caller is allowed.
+    if (profile?.role !== "Super Admin") return;
     loadUsers();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
 
   if (profile && profile.role !== "Super Admin") {
     return (
@@ -83,6 +90,7 @@ function UserManagement() {
   });
 
   async function handleAddUser() {
+    if (profile?.role !== "Super Admin") return;
     if (!form.name || !form.email || !/^\d{6}$/.test(form.pin)) {
       toast.error("Name, email, and a 6-digit PIN are required");
       return;
@@ -109,6 +117,7 @@ function UserManagement() {
   }
 
   async function toggleActive(u: UserRow) {
+    if (profile?.role !== "Super Admin") return;
     const { error } = await supabase.from("profiles").update({ active: !u.active }).eq("id", u.id);
     if (error) {
       toast.error(error.message);
@@ -123,6 +132,7 @@ function UserManagement() {
   const [resetting, setResetting] = useState(false);
 
   async function handleResetPin() {
+    if (profile?.role !== "Super Admin") return;
     if (!resetTarget || !/^\d{6}$/.test(resetPin)) {
       toast.error("Enter a 6-digit PIN");
       return;
@@ -188,6 +198,7 @@ function UserManagement() {
   }
 
   async function handleDelete() {
+    if (profile?.role !== "Super Admin") return;
     if (!deleteTarget) return;
     setDeleting(true);
     try {

@@ -8,7 +8,7 @@ import {
 import { formatDate, formatMoney } from "@/lib/format";
 import { formatDisplayText } from "@/lib/textUtils";
 import { StatusBadge } from "@/components/StatusBadge";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -64,6 +64,16 @@ function RegisterPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scope, setScope] = useState<string>(f ?? "month");
+
+  // Keep the Scope select in sync when the app navigates to /register?f=… from
+  // the Dashboard or the notification bell (e.g. ?f=running / ?f=payment_pending).
+  useEffect(() => {
+    if (typeof f === "string" && f !== scope) {
+      setScope(f);
+      setPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f]);
   const [confirmDel, setConfirmDel] = useState<Memo | null>(null);
   const [confirmBulk, setConfirmBulk] = useState(false);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, Set<string> | null>>>({
@@ -174,20 +184,29 @@ function RegisterPage() {
 
   const bulkDelete = async () => {
     const ids = Array.from(selected);
-    for (const id of ids) await deleteMemo(id);
-    toast.success(`${ids.length} memo(s) moved to trash`);
-    setSelected(new Set());
-    setConfirmBulk(false);
+    try {
+      for (const id of ids) await deleteMemo(id);
+      toast.success(`${ids.length} memo(s) moved to trash`);
+      setSelected(new Set());
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setConfirmBulk(false);
+    }
   };
 
   const bulkStatus = async (s: MemoStatus) => {
     const ids = Array.from(selected);
-    for (const id of ids) {
-      await updateMemo(id, { status: s });
-      await syncMemoToTransport(id, { status: s });
+    try {
+      for (const id of ids) {
+        await updateMemo(id, { status: s });
+        await syncMemoToTransport(id, { status: s });
+      }
+      toast.success(`Updated ${ids.length} memo(s) to ${s}`);
+      setSelected(new Set());
+    } catch (e) {
+      toast.error((e as Error).message);
     }
-    toast.success(`Updated ${ids.length} memo(s) to ${s}`);
-    setSelected(new Set());
   };
 
   const toExportRows = (rows: Memo[]) => rows.map((r) => ({
@@ -473,7 +492,16 @@ function RegisterPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={async () => {
-              if (confirmDel) { const n = confirmDel.memoNumber; await deleteMemo(confirmDel.id); toast.success(`Memo ${n} moved to Trash`); setConfirmDel(null); }
+              if (confirmDel) {
+                const n = confirmDel.memoNumber;
+                try {
+                  await deleteMemo(confirmDel.id);
+                  toast.success(`Memo ${n} moved to Trash`);
+                } catch (e) {
+                  toast.error((e as Error).message);
+                }
+                setConfirmDel(null);
+              }
             }}>Move to trash</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
