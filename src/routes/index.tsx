@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import { getMemos, getTrucks, getConsignees, type Memo, type FleetTruck, type Consignee } from "@/lib/dataStore";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, normalizeTruckNumber } from "@/lib/format";
 import {
   TrendingUp, TrendingDown, Truck, Building2, Clock, CheckCircle2,
   AlertCircle, Wallet, Package, Calendar, Award, User, IndianRupee, ReceiptText,
@@ -106,7 +106,7 @@ function Dashboard() {
         <KpiCard label="Total Trucks" value={String(trucks?.length ?? 0)} icon={Truck} tone="purple" onClick={() => nav({ to: "/fleet" })} />
         <KpiCard label="Total Consignees" value={String(consignees?.length ?? 0)} icon={Building2} tone="purple" onClick={() => nav({ to: "/consignees" })} />
 
-        <KpiCard label="Top Truck This Month" value={topTruck?.truckNumber ?? "—"} sub={topTruck ? `${truckCounts[topTruck.id]} trips · ${formatMoney(truckAmt[topTruck.id])}` : "No data"} icon={Award} tone="indigo" onClick={() => goReport("month")} />
+        <KpiCard label="Top Truck This Month" value={normalizeTruckNumber(topTruck?.truckNumber) || "—"} sub={topTruck ? `${truckCounts[topTruck.id]} trips · ${formatMoney(truckAmt[topTruck.id])}` : "No data"} icon={Award} tone="indigo" onClick={() => goReport("month")} />
         <KpiCard label="Top Driver This Month" value={topDriver ?? "—"} sub={topDriver ? `${driverCounts[topDriver]} trips` : "No data"} icon={User} tone="indigo" onClick={() => goReport("month")} />
 
         <KpiCard label="Total Memos (All Time)" value={String(m.length)} icon={Package} tone="blue" onClick={() => nav({ to: "/register" })} />

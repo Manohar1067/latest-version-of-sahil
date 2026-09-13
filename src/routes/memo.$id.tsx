@@ -21,6 +21,7 @@ export const Route = createFileRoute("/memo/$id")({
 /* Fixed document colours — a printed business document must not follow the app theme. */
 const NAVY = "#0B2A55";
 const RED = "#C1121F";
+const BLUE = "#1D4ED8";
 const LINE = "#D6DAE3";
 
 /** Section heading strip inside a details card. */
@@ -386,7 +387,7 @@ export const ReceiptPage = forwardRef<
           <div style={{ fontSize: `${s(34)}px`, fontWeight: 900, color: RED, lineHeight: 1.05, letterSpacing: "0.2px", fontFamily: CASTELLAR }}>
             {settings.companyName || "SAHIL ROAD LINES"}
           </div>
-          <div style={{ fontSize: `${s(14)}px`, fontWeight: 800, color: NAVY, letterSpacing: "0.7px", marginTop: `${s(1)}px` }}>
+          <div style={{ fontSize: `${s(14)}px`, fontWeight: 800, color: BLUE, letterSpacing: "0.7px", marginTop: `${s(1)}px` }}>
             TRANSPORT CONTRACTORS &amp; COMMISSION AGENTS
           </div>
           <div style={{ fontSize: `${s(12.5)}px`, lineHeight: 1.25, marginTop: `${s(2)}px` }} className="text-neutral-700">

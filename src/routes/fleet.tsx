@@ -95,7 +95,7 @@ function FleetPage() {
                   {filtered.length === 0 && (<tr><td colSpan={admin ? 8 : 7} className="py-16 text-center text-muted-foreground">No records found</td></tr>)}
                   {filtered.map((t) => (
                     <tr key={t.id} className="border-b hover:bg-muted/30">
-                      <td className="px-3 py-3 font-semibold">{t.truckNumber}</td>
+                      <td className="px-3 py-3 font-semibold">{normalizeTruckNumber(t.truckNumber) || t.truckNumber}</td>
                       <td className="px-3 py-3">{t.ownerName}</td>
                       <td className="px-3 py-3">{t.ownerPhone}</td>
                       <td className="px-3 py-3 font-medium">{t.driverName}</td>

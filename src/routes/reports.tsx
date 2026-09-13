@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import { getMemos, getTrucks, type Memo, type FleetTruck } from "@/lib/dataStore";
-import { formatMoney, formatDate } from "@/lib/format";
+import { formatMoney, formatDate, normalizeTruckNumber, compareMemoNumberDesc } from "@/lib/format";
 import { formatDisplayText } from "@/lib/textUtils";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
@@ -71,11 +71,13 @@ function ReportsPage() {
     return inRange.filter((m) => (focus.kind === "truck" ? m.truckId === focus.id : m.driverName === focus.id));
   }, [inRange, focus]);
 
-  /** Rows actually listed under the currently selected report type. */
+  /** Rows actually listed under the currently selected report type.
+   *  Filter first, then sort Memo Number STRICT DESCENDING (numeric suffix). */
   const visibleTrips = useMemo(() => {
-    if (type === "pending") return filtered.filter((x) => x.status === "Payment Pending");
-    if (type === "lr") return filtered.filter((x) => !x.lrSubmittedDate);
-    return filtered;
+    let rows = filtered;
+    if (type === "pending") rows = rows.filter((x) => x.status === "Payment Pending");
+    if (type === "lr") rows = rows.filter((x) => !x.lrSubmittedDate);
+    return [...rows].sort((a, b) => compareMemoNumberDesc(a.memoNumber, b.memoNumber));
   }, [filtered, type]);
 
   const revenue = filtered.reduce((s, x) => s + x.netFreight, 0);
@@ -96,7 +98,7 @@ function ReportsPage() {
   });
   Object.entries(groupTruck).forEach(([id, v]) => {
     const t = trucks?.find((x) => x.id === id);
-    truckStats.push({ id, number: t?.truckNumber ?? "—", ...v });
+    truckStats.push({ id, number: normalizeTruckNumber(t?.truckNumber) || "—", ...v });
   });
   truckStats.sort((a, b) => b.revenue - a.revenue);
 
@@ -142,7 +144,7 @@ function ReportsPage() {
       const t = trucks?.find((x) => x.id === m.truckId);
       return {
         "Memo #": m.memoNumber, "Date": formatDate(m.dispatchDate),
-        "Truck": t?.truckNumber ?? "", "Destination": m.toLocation, "Material": m.materialName,
+        "Truck": normalizeTruckNumber(t?.truckNumber) ?? "", "Destination": m.toLocation, "Material": m.materialName,
         "Net Freight": m.netFreight, "Advance": m.advance, "Balance": m.balance,
         "Expenses": m.totalExpenses, "Final Payable": m.finalPayable, "Status": m.status,
       };
@@ -326,7 +328,7 @@ function ReportsPage() {
                     <tr key={m.id} className="border-b">
                       <td className="px-3 py-2 font-semibold text-blue-600">{m.memoNumber}</td>
                       <td className="px-3 py-2">{formatDate(m.dispatchDate)}</td>
-                      <td className="px-3 py-2">{t?.truckNumber}</td>
+                      <td className="px-3 py-2">{normalizeTruckNumber(t?.truckNumber) || "—"}</td>
                       <td className="px-3 py-2 font-semibold">{formatDisplayText(m.toLocation)}</td>
                       <td className="px-3 py-2 text-right">{formatMoney(m.netFreight)}</td>
                       <td className="px-3 py-2 text-right">{formatMoney(m.balance)}</td>
