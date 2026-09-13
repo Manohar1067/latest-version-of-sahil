@@ -11,7 +11,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { formatDate } from "@/lib/format";
+import { formatDate, normalizeTruckNumber } from "@/lib/format";
 import { useState } from "react";
 import { Pencil, Trash2, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -45,9 +45,10 @@ function FleetPage() {
     if (busy) return;
     try {
       if (!form.truckNumber) return toast.error("Truck number required");
+      const finalForm = { ...form, truckNumber: normalizeTruckNumber(form.truckNumber) || form.truckNumber };
       setBusy(true);
-      if (editId) { await updateTruck(editId, form); toast.success(`Truck ${form.truckNumber} updated`); }
-      else { await createTruck(form); toast.success(`Truck ${form.truckNumber} added`); }
+      if (editId) { await updateTruck(editId, finalForm); toast.success(`Truck ${finalForm.truckNumber} updated`); }
+      else { await createTruck(finalForm); toast.success(`Truck ${finalForm.truckNumber} added`); }
       setOpen(false);
     } catch (e) { toast.error((e as Error).message); }
     finally { setBusy(false); }
@@ -136,7 +137,7 @@ function FleetPage() {
             ).map(([k, label, type]) => (
               <div key={k} className="flex flex-col gap-1.5">
                 <Label>{label}</Label>
-                <Input type={type ?? "text"} className="h-11" value={(form[k] as string) ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
+                <Input type={type ?? "text"} className="h-11" value={(form[k] as string) ?? ""} onChange={(e) => setForm((f) => ({ ...f, [k]: k === "truckNumber" ? normalizeTruckNumber(e.target.value) : e.target.value }))} />
               </div>
             ))}
             <div className="col-span-2 flex flex-col gap-1.5">

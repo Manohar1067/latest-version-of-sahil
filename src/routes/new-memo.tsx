@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Combobox } from "@/components/Combobox";
-import { toInputDate, fromInputDate } from "@/lib/format";
+import { toInputDate, fromInputDate, normalizeTruckNumber } from "@/lib/format";
 import { toast } from "sonner";
 import { ensureTransportEntryForMemo } from "@/lib/transportListStore";
 import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
@@ -198,6 +198,26 @@ function NewMemo() {
     }
   }, [form.finalPaymentDate]);
 
+  // Keep status in step with the LR workflow: setting an LR Received/Submitted
+  // date promotes an earlier status forward (never demotes a manual selection
+  // like Completed / Payment Pending), so the Register List status filters
+  // always reflect the stored data immediately when a memo is edited.
+  useEffect(() => {
+    setForm((f) => {
+      if (!f.lrSubmittedDate && !f.lrReceivedDate) return f;
+      if (f.status === "Completed" || f.status === "Payment Pending") return f;
+      if (f.lrSubmittedDate && (f.status === "Dispatched" || f.status === "Delivered" || f.status === "LR Received")) {
+        return { ...f, status: "LR Submitted" as MemoStatus };
+      }
+      // lr_submitted cleared but lr_received still set: a memo that had advanced
+      // to LR Submitted moves back to LR Received (submission is not final).
+      if (!f.lrSubmittedDate && f.lrReceivedDate && (f.status === "Dispatched" || f.status === "Delivered" || f.status === "LR Submitted")) {
+        return { ...f, status: "LR Received" as MemoStatus };
+      }
+      return f;
+    });
+  }, [form.lrReceivedDate, form.lrSubmittedDate]);
+
   // warn on unload
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -228,11 +248,14 @@ function NewMemo() {
     if (!form.dispatchDate) return toast.error("Dispatch date is required");
     setSaving(true);
     try {
-      let finalForm = { ...form, isDraft: draft };
+      // Normalize the truck number (uppercase) at save time so historical
+      // lowercase values are safely normalized whenever a memo is edited.
+      const normalizedTruck = normalizeTruckNumber(form.truckNumber);
+      let finalForm: MemoInput & { isDraft: boolean } = { ...form, truckNumber: normalizedTruck || form.truckNumber, isDraft: draft };
 
       const [consigneeId, truckId] = await Promise.all([
         ensureConsigneeExists(form.consigneeName),
-        ensureTruckExists(form.truckNumber, form.driverName, form.ownerName, form.ownerPhone),
+        ensureTruckExists(normalizedTruck || form.truckNumber, form.driverName, form.ownerName, form.ownerPhone),
       ]);
       finalForm.consigneeId = consigneeId || finalForm.consigneeId;
       finalForm.truckId = truckId || finalForm.truckId;
@@ -300,16 +323,6 @@ function NewMemo() {
         <Section title="Transport Information">
           <Field label="From"><Input className="h-11" value={form.fromLocation} onChange={(e) => set("fromLocation", e.target.value)} /></Field>
           <Field label="To"><Input className="h-11" value={form.toLocation} onChange={(e) => set("toLocation", e.target.value)} /></Field>
-          <Field label="Transport Name">
-            <Combobox
-              options={Array.from(new Set(["SRL Direct", "Kareem Transports", form.transportName].filter(Boolean))).map((n) => ({ value: n, label: n }))}
-              value={form.transportName}
-              onChange={(v) => set("transportName", v)}
-              placeholder="Search or type transport…"
-              allowCustom
-              createLabel="Use"
-            />
-          </Field>
           <Field label="G.C. No."><Input className="h-11" value={form.gcNo || ""} onChange={(e) => set("gcNo", e.target.value)} /></Field>
           <Field label="Consignee" required>
             <Combobox
@@ -329,8 +342,9 @@ function NewMemo() {
               options={(trucks ?? []).map((t) => ({ value: t.truckNumber, label: t.truckNumber, keywords: `${t.driverName} ${t.ownerName}` }))}
               value={form.truckNumber}
               onChange={(v) => {
-                set("truckNumber", v);
-                const t = trucks?.find((x) => x.truckNumber === v);
+                const norm = normalizeTruckNumber(v);
+                set("truckNumber", norm);
+                const t = trucks?.find((x) => normalizeTruckNumber(x.truckNumber) === norm);
                 if (t) setForm((f) => ({ ...f, driverName: t.driverName, ownerName: t.ownerName, ownerPhone: t.ownerPhone }));
               }}
               placeholder="Search or type truck number…"

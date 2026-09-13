@@ -21,6 +21,7 @@ import {
   emit as emitTransport,
 } from "./transportListStore";
 import type { TransportEntry } from "./transportListStore";
+import { normalizeTruckNumber } from "./format";
 
 // -----------------------------  TYPES  --------------------------------------
 // (unchanged from the original file)
@@ -743,7 +744,7 @@ export async function ensureTruckExists(
   ownerName?: string,
   ownerPhone?: string,
 ): Promise<string | null> {
-  const trimmed = truckNumber?.trim();
+  const trimmed = normalizeTruckNumber(truckNumber);
   if (!trimmed) return null;
   const { data: existing } = await supabase
     .from("fleet_trucks")
@@ -1569,7 +1570,7 @@ export async function importAllDataXlsx(file: File): Promise<ImportResult> {
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i] as Record<string, any>;
         const rowNum = i + 2;
-        const truckNumber = cellStr(r, "truckNumber");
+        const truckNumber = normalizeTruckNumber(cellStr(r, "truckNumber"));
         if (!truckNumber) {
           counts.failed++;
           res.sheets[res.sheets.length - 1].skippedNoKey++;
@@ -1657,7 +1658,7 @@ export async function importAllDataXlsx(file: File): Promise<ImportResult> {
     if (!errT) {
       (trucksData ?? []).forEach((t) => {
         if (t && typeof t.truck_number === "string" && t.truck_number) {
-          truckIdBy.set(t.truck_number.toLowerCase(), t.id as string);
+          truckIdBy.set(normalizeTruckNumber(t.truck_number).toLowerCase(), t.id as string);
         }
       });
     }
@@ -1698,7 +1699,7 @@ export async function importAllDataXlsx(file: File): Promise<ImportResult> {
         continue;
       }
       seen.add(key.toLowerCase());
-      const truckNumberName = cellStr(r, "truckNumber");
+      const truckNumberName = normalizeTruckNumber(cellStr(r, "truckNumber"));
       const consigneeNameName = cellStr(r, "consigneeName");
       const row = memoToRow({
         dispatchDate: cellDate(r, "dispatchDate"),
@@ -1838,7 +1839,7 @@ export async function importAllDataXlsx(file: File): Promise<ImportResult> {
         fromLocation: cellStr(r, "fromLocation"),
         toLocation: cellStr(r, "toLocation"),
         transportName: cellStr(r, "transportName"),
-        truckNumber: cellStr(r, "truckNumber"),
+        truckNumber: normalizeTruckNumber(cellStr(r, "truckNumber")),
         driverName: cellStr(r, "driverName"),
         ownerName: cellStr(r, "ownerName"),
         ownerPhone: cellStr(r, "ownerPhone"),

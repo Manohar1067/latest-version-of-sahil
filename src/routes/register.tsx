@@ -5,7 +5,7 @@ import {
   getMemos, getTrucks, getConsignees, deleteMemo, updateMemo, syncMemoToTransport,
   ALL_MEMO_STATUSES, type Memo, type FleetTruck, type Consignee, type MemoStatus,
 } from "@/lib/dataStore";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, toDateKey, normalizeTruckNumber, effectiveWorkflowStatus, qualifiesForStatus, compareMemoNumberDesc } from "@/lib/format";
 import { formatDisplayText } from "@/lib/textUtils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useEffect, useMemo, useState } from "react";
@@ -21,6 +21,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { DateColumnFilter } from "@/components/DateColumnFilter";
 import { Combobox } from "@/components/Combobox";
 import { exportRows } from "@/lib/exportData";
 import {
@@ -39,10 +40,25 @@ function endOfDay(d: Date) { const x = new Date(d); x.setHours(23, 59, 59, 999);
 
 // Register list supports per-column excel-style filters; each key names a column.
 type ColKey =
-  | "memoNumber" | "dispatch" | "truck" | "transport" | "destination"
+  | "memoNumber" | "dispatch" | "truck" | "consignee" | "destination"
   | "rate" | "weight" | "netFreight" | "advance" | "balance"
   | "unloading" | "lrRec" | "lrSub" | "finalPayable" | "finalPayDate"
   | "remarks" | "status";
+
+/** Columns whose per-column filter is a calendar date picker. */
+const DATE_COL_KEYS = new Set<ColKey>(["dispatch", "unloading", "lrRec", "lrSub", "finalPayDate"]);
+
+/** Extracts a memo's raw date value for a date column. */
+const dateValue = (r: Memo, key: ColKey): string | undefined => {
+  switch (key) {
+    case "dispatch": return r.dispatchDate;
+    case "unloading": return r.unloadingDate;
+    case "lrRec": return r.lrReceivedDate;
+    case "lrSub": return r.lrSubmittedDate;
+    case "finalPayDate": return r.finalPaymentDate;
+    default: return undefined;
+  }
+};
 
 function RegisterPage() {
   const { f } = Route.useSearch();
@@ -77,16 +93,18 @@ function RegisterPage() {
   const [confirmDel, setConfirmDel] = useState<Memo | null>(null);
   const [confirmBulk, setConfirmBulk] = useState(false);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, Set<string> | null>>>({
-    truck: null, transport: null, destination: null, status: null,
+    truck: null, consignee: null, destination: null, status: null,
   });
+  const [dateFilters, setDateFilters] = useState<Partial<Record<ColKey, string | null>>>({});
 
   const truckById = (id: string) => trucks?.find((t) => t.id === id);
   const consigneeById = (id: string) => consignees?.find((c) => c.id === id);
 
-  /** Resolve truck display: prefer linked truck, fall back to free-text truckNumber. */
+  /** Resolve truck display: prefer linked truck, fall back to free-text truckNumber.
+   *  Always normalized to uppercase so legacy lowercase values display correctly. */
   const truckLabel = (r: Memo): string => {
     const linked = r.truckId ? truckById(r.truckId)?.truckNumber : undefined;
-    return linked || r.truckNumber || "—";
+    return normalizeTruckNumber(linked || r.truckNumber) || "—";
   };
   /** Resolve consignee display: prefer linked consignee, fall back to free-text consigneeName. */
   const consigneeLabel = (r: Memo): string => {
@@ -111,7 +129,7 @@ function RegisterPage() {
     else if (scope === "payment_pending") rows = rows.filter((x) => x.status === "Payment Pending");
     else if (scope === "collection_due") rows = rows.filter((x) => x.status !== "Completed" && x.balance > 0);
 
-    if (status !== "all") rows = rows.filter((r) => r.status === status);
+    if (status !== "all") rows = rows.filter((r) => qualifiesForStatus(r, status));
     if (truckId !== "all") rows = rows.filter((r) => r.truckId === truckId);
     if (consigneeId !== "all") rows = rows.filter((r) => r.consigneeId === consigneeId);
     if (paidBy !== "all") rows = rows.filter((r) => r.paidBy === paidBy);
@@ -123,7 +141,7 @@ function RegisterPage() {
     if (query.trim()) {
       const q = query.toLowerCase();
       rows = rows.filter((r) => {
-        return [r.memoNumber, truckLabel(r), r.driverName, r.transportName, consigneeLabel(r), r.toLocation, r.materialName, r.status, r.remarks]
+        return [r.memoNumber, truckLabel(r), r.driverName, r.transportName, consigneeLabel(r), r.toLocation, r.materialName, effectiveWorkflowStatus(r), r.remarks]
           .filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
       });
     }
@@ -136,7 +154,7 @@ function RegisterPage() {
       case "memoNumber": return r.memoNumber;
       case "dispatch": return formatDate(r.dispatchDate);
       case "truck": return truckLabel(r);
-      case "transport": return r.transportName || "—";
+      case "consignee": return consigneeLabel(r);
       case "destination": return r.toLocation || "—";
       case "rate": return String(r.ratePerTon ?? "");
       case "weight": return String(r.weightTons ?? "");
@@ -149,23 +167,28 @@ function RegisterPage() {
       case "finalPayable": return String(r.finalPayable ?? "");
       case "finalPayDate": return formatDate(r.finalPaymentDate);
       case "remarks": return r.remarks || "—";
-      case "status": return r.status;
+      case "status": return effectiveWorkflowStatus(r);
     }
   };
 
   const filtered = useMemo(() => {
     let rows = rowsPre;
+    // Calendar-based date filters compare the stored date exactly as displayed.
+    for (const k of DATE_COL_KEYS) {
+      const dk = dateFilters[k];
+      if (dk) rows = rows.filter((r) => toDateKey(dateValue(r, k)) === dk);
+    }
     (Object.keys(colFilters) as ColKey[]).forEach((k) => {
       const sel = colFilters[k];
       if (sel) rows = rows.filter((r) => sel.has(colValue(r, k)));
     });
-    return rows.sort(
+    return [...rows].sort(
       (a, b) =>
-        +new Date(b.dispatchDate) - +new Date(a.dispatchDate) ||
+        compareMemoNumberDesc(a.memoNumber, b.memoNumber) ||
         +new Date(b.createdAt ?? 0) - +new Date(a.createdAt ?? 0),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowsPre, colFilters, trucks, consignees]);
+  }, [rowsPre, colFilters, dateFilters, trucks, consignees]);
 
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -175,6 +198,7 @@ function RegisterPage() {
     setQuery(""); setStatus("all"); setTruckId("all"); setConsigneeId("all"); setPaidBy("all"); setScope("all"); setPage(1);
     setCustomStart(""); setCustomEnd("");
     setColFilters({});
+    setDateFilters({});
   };
 
   const toggleAll = () => {
@@ -211,9 +235,8 @@ function RegisterPage() {
 
   const toExportRows = (rows: Memo[]) => rows.map((r) => ({
       "Memo #": r.memoNumber,
-      "Dispatch": formatDate(r.dispatchDate),
+      "Dispatch Date": formatDate(r.dispatchDate),
       "Truck": truckLabel(r),
-      "Transport": r.transportName,
       "G.C. No.": r.gcNo ?? "",
       "Destination": r.toLocation,
       "Consignee": consigneeLabel(r),
@@ -236,7 +259,7 @@ function RegisterPage() {
       "LR Submitted": formatDate(r.lrSubmittedDate),
       "Final Payable": r.finalPayable,
       "Final Payment Date": formatDate(r.finalPaymentDate),
-      "Status": r.status,
+      "Status": effectiveWorkflowStatus(r),
       "Remarks": r.remarks ?? "",
     }));
 
@@ -281,7 +304,7 @@ function RegisterPage() {
           <Input
             value={query}
             onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-            placeholder="Search memo # / truck / driver / transport / consignee / destination / material / status / remarks…"
+            placeholder="Search memo # / truck / driver / consignee / destination / material / status / remarks…"
             className="h-12 pl-10 text-base"
           />
         </div>
@@ -384,9 +407,9 @@ function RegisterPage() {
           type Col = { key: ColKey; label: string; align?: "left" | "right"; render: (r: Memo) => React.ReactNode };
           const cols: Col[] = [
             { key: "memoNumber", label: "Memo #", render: (r) => <span className="inline-flex items-center"><Link to="/memo/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.memoNumber}</Link>{r.isDraft && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Draft</span>}</span> },
-            { key: "dispatch", label: "Dispatch", render: (r) => <span className="whitespace-nowrap font-semibold text-blue-700">{formatDate(r.dispatchDate)}</span> },
+            { key: "dispatch", label: "Dispatch Date", render: (r) => <span className="whitespace-nowrap font-semibold text-blue-700">{formatDate(r.dispatchDate)}</span> },
             { key: "truck", label: "Truck", render: (r) => <span className="font-bold whitespace-nowrap text-navy underline decoration-navy/30 underline-offset-2">{truckLabel(r)}</span> },
-            { key: "transport", label: "Transport", render: (r) => <span className="font-semibold text-navy">{formatDisplayText(r.transportName)}</span> },
+            { key: "consignee", label: "Consignee", render: (r) => <span className="font-semibold text-navy">{formatDisplayText(consigneeLabel(r))}</span> },
             { key: "destination", label: "Destination", render: (r) => <span className="font-bold text-navy">{formatDisplayText(r.toLocation)}</span> },
             { key: "rate", label: "Rate/Ton", align: "right", render: (r) => formatMoney(r.ratePerTon) },
             { key: "weight", label: "Weight", align: "right", render: (r) => r.weightTons },
@@ -399,7 +422,7 @@ function RegisterPage() {
             { key: "remarks", label: "Remarks", render: (r) => <span className="text-sm text-muted-foreground">{formatDisplayText(r.remarks) || "—"}</span> },
             { key: "finalPayable", label: "Final Payable", align: "right", render: (r) => formatMoney(r.finalPayable) },
             { key: "finalPayDate", label: "Final Pay Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.finalPaymentDate)}</span> },
-            { key: "status", label: "Status", render: (r) => <StatusBadge status={r.status as MemoStatus} /> },
+            { key: "status", label: "Status", render: (r) => <StatusBadge status={effectiveWorkflowStatus(r) as MemoStatus} /> },
           ];
           return (
             <div className="mt-4 overflow-x-auto">
@@ -412,11 +435,19 @@ function RegisterPage() {
                       <th key={c.key} className={`px-3 py-3 ${c.align === "right" ? "text-right" : ""}`}>
                         <span className="inline-flex items-center">
                           {c.label}
-                          <ColumnFilter
-                            values={rowsPre.map((r) => colValue(r, c.key))}
-                            selected={colFilters[c.key] ?? null}
-                            onApply={(n) => setColFilters((f) => ({ ...f, [c.key]: n }))}
-                          />
+                          {DATE_COL_KEYS.has(c.key) ? (
+                            <DateColumnFilter
+                              label={c.label}
+                              value={dateFilters[c.key] ?? null}
+                              onApply={(n) => setDateFilters((f) => ({ ...f, [c.key]: n }))}
+                            />
+                          ) : (
+                            <ColumnFilter
+                              values={rowsPre.map((r) => colValue(r, c.key))}
+                              selected={colFilters[c.key] ?? null}
+                              onApply={(n) => setColFilters((f) => ({ ...f, [c.key]: n }))}
+                            />
+                          )}
                         </span>
                       </th>
                     ))}

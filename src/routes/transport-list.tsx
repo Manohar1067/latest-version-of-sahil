@@ -7,7 +7,7 @@ import {
   ALL_TRANSPORT_STATUSES, type TransportEntry,
 } from "@/lib/transportListStore";
 import { getTrucks, getConsignees, type FleetTruck, type Consignee } from "@/lib/dataStore";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, toDateKey, normalizeTruckNumber, effectiveWorkflowStatus, qualifiesForStatus, compareMemoNumberDesc } from "@/lib/format";
 import { formatDisplayText } from "@/lib/textUtils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useMemo, useState } from "react";
@@ -23,6 +23,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ColumnFilter } from "@/components/ColumnFilter";
+import { DateColumnFilter } from "@/components/DateColumnFilter";
 import { exportRows } from "@/lib/exportData";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -37,10 +38,25 @@ function startOfWeek(d = new Date()) { const x = new Date(d); const day = (x.get
 function endOfDay(d: Date) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
 
 type ColKey =
-  | "entryNumber" | "dispatch" | "truck" | "transport" | "destination"
+  | "entryNumber" | "dispatch" | "truck" | "consignee" | "destination"
   | "rate" | "weight" | "netFreight" | "advance" | "balance"
   | "unloading" | "halting" | "lrRec" | "lrSub" | "remarks"
   | "finalPayable" | "finalPayDate" | "status";
+
+/** Columns whose per-column filter is a calendar date picker. */
+const DATE_COL_KEYS = new Set<ColKey>(["dispatch", "unloading", "lrRec", "lrSub", "finalPayDate"]);
+
+/** Extracts an entry's raw date value for a date column. */
+const dateValue = (r: TransportEntry, key: ColKey): string | undefined => {
+  switch (key) {
+    case "dispatch": return r.dispatchDate;
+    case "unloading": return r.unloadingDate;
+    case "lrRec": return r.lrReceivedDate;
+    case "lrSub": return r.lrSubmittedDate;
+    case "finalPayDate": return r.finalPaymentDate;
+    default: return undefined;
+  }
+};
 
 function TransportListPage() {
   const nav = useNavigate();
@@ -62,6 +78,7 @@ function TransportListPage() {
   const [page, setPage] = useState(1);
   const [confirmDel, setConfirmDel] = useState<TransportEntry | null>(null);
   const [colFilters, setColFilters] = useState<Partial<Record<ColKey, Set<string> | null>>>({});
+  const [dateFilters, setDateFilters] = useState<Partial<Record<ColKey, string | null>>>({});
 
   const rowsPre = useMemo(() => {
     let rows = entries ?? [];
@@ -80,10 +97,10 @@ function TransportListPage() {
     else if (scope === "payment_pending") rows = rows.filter((x) => x.status === "Payment Pending");
     else if (scope === "collection_due") rows = rows.filter((x) => x.status !== "Completed" && x.balance > 0);
 
-    if (status !== "all") rows = rows.filter((r) => r.status === status);
+    if (status !== "all") rows = rows.filter((r) => qualifiesForStatus(r, status));
     if (paidBy !== "all") rows = rows.filter((r) => r.paidBy === paidBy);
     if (consignee !== "all") rows = rows.filter((r) => (r.consigneeName || "—") === consignee);
-    if (truck !== "all") rows = rows.filter((r) => (r.truckNumber || "—") === truck);
+    if (truck !== "all") rows = rows.filter((r) => (normalizeTruckNumber(r.truckNumber) || "—") === truck);
     if (customStart || customEnd) {
       const cs = customStart ? new Date(customStart + "T00:00:00") : new Date("1970-01-01T00:00:00");
       const ce = customEnd ? endOfDay(new Date(customEnd + "T00:00:00")) : endOfDay(new Date("9999-12-31T00:00:00"));
@@ -92,7 +109,7 @@ function TransportListPage() {
     if (query.trim()) {
       const q = query.toLowerCase();
       rows = rows.filter((r) =>
-        [r.entryNumber, r.truckNumber, r.driverName, r.transportName, r.consigneeName, r.toLocation, r.materialName, r.status, r.remarks]
+        [r.entryNumber, r.truckNumber, r.driverName, r.transportName, r.consigneeName, r.toLocation, r.materialName, effectiveWorkflowStatus(r), r.remarks]
           .filter(Boolean).some((v) => String(v).toLowerCase().includes(q)),
       );
     }
@@ -110,8 +127,8 @@ function TransportListPage() {
   }, [consignees, entries]);
   const truckOptions = useMemo(() => {
     const names = new Set<string>();
-    (trucks ?? []).forEach((t) => { if (t.truckNumber) names.add(t.truckNumber); });
-    (entries ?? []).forEach((e) => names.add(e.truckNumber || "—"));
+    (trucks ?? []).forEach((t) => { if (t.truckNumber) names.add(normalizeTruckNumber(t.truckNumber)); });
+    (entries ?? []).forEach((e) => names.add(normalizeTruckNumber(e.truckNumber) || "—"));
     return [
       { value: "all", label: "All trucks" },
       ...Array.from(names).sort().map((n) => ({ value: n, label: n })),
@@ -122,8 +139,8 @@ function TransportListPage() {
     switch (key) {
       case "entryNumber": return r.entryNumber;
       case "dispatch": return formatDate(r.dispatchDate);
-      case "truck": return r.truckNumber || "—";
-      case "transport": return r.transportName || "—";
+      case "truck": return normalizeTruckNumber(r.truckNumber) || "—";
+      case "consignee": return r.consigneeName || "—";
       case "destination": return r.toLocation || "—";
       case "rate": return String(r.ratePerTon ?? "");
       case "weight": return String(r.weightTons ?? "");
@@ -137,19 +154,24 @@ function TransportListPage() {
       case "remarks": return r.remarks || "—";
       case "finalPayable": return String(r.finalPayable ?? "");
       case "finalPayDate": return formatDate(r.finalPaymentDate);
-      case "status": return r.status;
+      case "status": return effectiveWorkflowStatus(r);
     }
   };
 
   const filtered = useMemo(() => {
     let rows = rowsPre;
+    // Calendar-based date filters compare the stored date exactly as displayed.
+    for (const k of DATE_COL_KEYS) {
+      const dk = dateFilters[k];
+      if (dk) rows = rows.filter((r) => toDateKey(dateValue(r, k)) === dk);
+    }
     (Object.keys(colFilters) as ColKey[]).forEach((k) => {
       const sel = colFilters[k];
       if (sel) rows = rows.filter((r) => sel.has(colValue(r, k)));
     });
-    return [...rows].sort((a, b) => +new Date(b.dispatchDate) - +new Date(a.dispatchDate));
+    return [...rows].sort((a, b) => compareMemoNumberDesc(a.entryNumber, b.entryNumber));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rowsPre, colFilters]);
+  }, [rowsPre, colFilters, dateFilters]);
 
   const total = filtered.length;
   const pages = Math.max(1, Math.ceil(total / pageSize));
@@ -157,13 +179,14 @@ function TransportListPage() {
 
   const resetFilters = () => {
     setQuery(""); setStatus("all"); setPaidBy("all"); setConsignee("all"); setTruck("all"); setScope("all"); setPage(1); setColFilters({});
+    setDateFilters({});
     setCustomStart(""); setCustomEnd("");
   };
 
   const toExportRows = (rows: TransportEntry[]) => rows.map((r) => ({
     "Memo Number": r.entryNumber,
-    "Dispatch": formatDate(r.dispatchDate),
-    "Truck": r.truckNumber,
+    "Dispatch Date": formatDate(r.dispatchDate),
+    "Truck": normalizeTruckNumber(r.truckNumber),
     "Transport": r.transportName,
     "Destination": r.toLocation,
     "Consignee": r.consigneeName,
@@ -180,7 +203,7 @@ function TransportListPage() {
     "LR Submitted": formatDate(r.lrSubmittedDate),
     "Final Payable": r.finalPayable,
     "Final Payment Date": formatDate(r.finalPaymentDate),
-    "Status": r.status,
+    "Status": effectiveWorkflowStatus(r),
     "Remarks": r.remarks ?? "",
   }));
 
@@ -193,9 +216,9 @@ function TransportListPage() {
   type Col = { key: ColKey; label: string; align?: "left" | "right"; render: (r: TransportEntry) => React.ReactNode };
   const cols: Col[] = [
     { key: "entryNumber", label: "Memo Number", render: (r) => <Link to="/transport/$id" params={{ id: r.id }} className="font-semibold text-blue-600 hover:underline">{r.entryNumber}</Link> },
-    { key: "dispatch", label: "Dispatch", render: (r) => <span className="whitespace-nowrap">{formatDate(r.dispatchDate)}</span> },
-    { key: "truck", label: "Truck", render: (r) => <span className="font-semibold whitespace-nowrap">{r.truckNumber || "—"}</span> },
-    { key: "transport", label: "Transport", render: (r) => formatDisplayText(r.transportName) },
+    { key: "dispatch", label: "Dispatch Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.dispatchDate)}</span> },
+    { key: "truck", label: "Truck", render: (r) => <span className="font-semibold whitespace-nowrap">{normalizeTruckNumber(r.truckNumber) || "—"}</span> },
+    { key: "consignee", label: "Consignee", render: (r) => <span className="font-semibold text-navy">{formatDisplayText(r.consigneeName) || "—"}</span> },
     { key: "destination", label: "Destination", render: (r) => <span className="font-semibold">{formatDisplayText(r.toLocation)}</span> },
     { key: "rate", label: "Rate/Ton (Transport)", align: "right", render: (r) => formatMoney(r.ratePerTon) },
     { key: "weight", label: "Weight", align: "right", render: (r) => r.weightTons },
@@ -209,7 +232,7 @@ function TransportListPage() {
     { key: "remarks", label: "Remarks", render: (r) => <span className="text-sm text-muted-foreground">{formatDisplayText(r.remarks) || "—"}</span> },
     { key: "finalPayable", label: "Final Payable", align: "right", render: (r) => formatMoney(r.finalPayable) },
     { key: "finalPayDate", label: "Final Pay Date", render: (r) => <span className="whitespace-nowrap">{formatDate(r.finalPaymentDate)}</span> },
-    { key: "status", label: "Status", render: (r) => <StatusBadge status={r.status} /> },
+    { key: "status", label: "Status", render: (r) => <StatusBadge status={effectiveWorkflowStatus(r)} /> },
   ];
 
   return (
@@ -339,11 +362,19 @@ function TransportListPage() {
                   <th key={c.key} className={`px-3 py-3 ${c.align === "right" ? "text-right" : ""}`}>
                     <span className="inline-flex items-center">
                       {c.label}
-                      <ColumnFilter
-                        values={rowsPre.map((r) => colValue(r, c.key))}
-                        selected={colFilters[c.key] ?? null}
-                        onApply={(n) => setColFilters((f) => ({ ...f, [c.key]: n }))}
-                      />
+                      {DATE_COL_KEYS.has(c.key) ? (
+                        <DateColumnFilter
+                          label={c.label}
+                          value={dateFilters[c.key] ?? null}
+                          onApply={(n) => setDateFilters((f) => ({ ...f, [c.key]: n }))}
+                        />
+                      ) : (
+                        <ColumnFilter
+                          values={rowsPre.map((r) => colValue(r, c.key))}
+                          selected={colFilters[c.key] ?? null}
+                          onApply={(n) => setColFilters((f) => ({ ...f, [c.key]: n }))}
+                        />
+                      )}
                     </span>
                   </th>
                 ))}

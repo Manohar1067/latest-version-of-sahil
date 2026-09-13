@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useStoreData } from "@/lib/useStore";
 import { getMemo, getTruck, getConsignee, getSettings, type Memo, type FleetTruck, type Consignee, type Settings } from "@/lib/dataStore";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, normalizeTruckNumber } from "@/lib/format";
 import { formatDisplayText } from "@/lib/textUtils";
 import { Button } from "@/components/ui/button";
 import { Printer, Download, ArrowLeft, Pencil, ChevronDown, Phone, Mail, MapPin, Share2 } from "lucide-react";
@@ -178,7 +178,9 @@ export const ReceiptPage = forwardRef<
     terms: string[];
   }
 >(function ReceiptPage({ memo, settings, truck, consignee, terms }, ref) {
-  const truckNo = truck?.truckNumber || memo.truckNumber || "—";
+  // Normalize at render time as a defensive safeguard so legacy lowercase truck
+  // numbers in old memo records always print/display uppercased.
+  const truckNo = normalizeTruckNumber(truck?.truckNumber || memo.truckNumber) || "—";
   const consigneeName = consignee?.companyName || memo.consigneeName || "—";
   const logoEl = settings.logoUrl ? (
     <img src={settings.logoUrl} className="h-[72px] w-auto max-w-[100px] object-contain" alt="Company logo" style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.15))" }} />
@@ -187,26 +189,144 @@ export const ReceiptPage = forwardRef<
   );
 
   const FONT = "'Inter', 'Segoe UI', system-ui, Roboto, Arial, Helvetica, sans-serif";
+  const CASTELLAR = "'Castellar', 'Castellar MT', Georgia, 'Times New Roman', serif";
+
+  // ---- Single-A4 auto-compaction ------------------------------------------
+  // The document is designed at exactly screen-A4 scale. If the content (e.g.
+  // long Terms & Conditions) exceeds one page, all vertical metrics (font
+  // sizes, paddings, signature spacing) are scaled down proportionally until
+  // the receipt fits inside the single A4 sheet. No transform/zoom hacks, no
+  // clipping, no hidden content — the document simply typesets tighter.
+  const [compact, setCompact] = useState(1);
+  // Mirrors `compact` synchronously so the measurement solver never reads stale
+  // values from a previous render while its rAF chain awaits layout.
+  const compactRef = useRef(1);
+  // Records which receipt content has already been measured AND settled. Once a
+  // given content key is solved it is never measured again, so unrelated renders
+  // (theme toggles, parent state, store notifications) cannot re-trigger the
+  // compaction loop.
+  const solvedRef = useRef<string | null>(null);
+  // Internal measurement ref — the forwarded `ref` is not always provided
+  // (the print-portal copy and /test-receipt skip it), so we measure our own.
+  const areaRef = useRef<HTMLDivElement>(null);
+  const setAreaRef = (node: HTMLDivElement | null) => {
+    areaRef.current = node;
+    if (typeof ref === "function") ref(node);
+    else if (ref) ref.current = node;
+  };
+
+  const s = (px: number) => Math.max(1, Math.round(px * compact));
+
+  // ---- Single-A4 auto-compaction: measure once, settle, never churn --------
+  // The previous implementation looped: `compact` was in its own dependency
+  // array, and a measurement reporting "fits" reset the scale back to 100%,
+  // which immediately re-overflowed the page, which the next measurement
+  // "fixed", which reset to 100% again — an unbounded render ↔ measure ↔
+  // shrink ↔ reset cycle that made the receipt visually shrink/grow/blink
+  // forever whenever ANY compaction was needed. This solver instead:
+  //   1. runs only when the receipt CONTENT changes, never on a scale change or
+  //      an unrelated re-render,
+  //   2. walks the scale DOWN monotonically until the content fits a single A4
+  //      page (or hits the 0.7 floor), keeping whatever scale achieved the fit —
+  //      it never bounces back to 1 mid-solve,
+  //   3. records a "solved" key so a settled receipt is measured exactly once
+  //      and then left completely alone (no continuous re-measurement),
+  //   4. bounds the walk and cancels it on unmount so it provably terminates.
+  // Measurement runs inside requestAnimationFrame, so React has already applied
+  // the previous scale to the DOM before the next measurement reads it.
+  useEffect(() => {
+    const el = areaRef.current;
+    if (!el) return;
+
+    // Content fingerprint — anything that changes the vertical extent of the
+    // receipt belongs in it. Identical fingerprints render identically, so
+    // solving once covers both the screen copy and the print-portal copy.
+    const key = JSON.stringify([
+      memo.memoNumber, memo.dispatchDate, memo.gcNo, memo.materialName,
+      memo.ownerName, memo.driverName, memo.fromLocation, memo.toLocation,
+      memo.description, memo.ratePerTon, memo.weightTons, memo.netFreight,
+      memo.totalHire, memo.advance, memo.balance, memo.paidAt, memo.transportName,
+      memo.commission, memo.loadingCharges, memo.tds, memo.localDriverGuide,
+      memo.goodsMamuli, memo.totalExpenses, memo.finalPayable,
+      memo.finalPaymentDate, memo.paidBy, memo.paymentMethod,
+      settings.companyName, settings.address, settings.phone, settings.email,
+      settings.website, settings.jurisdictionText,
+      truck?.truckNumber, consignee?.companyName, terms,
+    ]);
+    if (solvedRef.current === key) return; // already settled — do nothing
+
+    let cancelled = false;
+    let iter = 0;
+    let rafId: number | undefined;
+
+    const step = () => {
+      if (cancelled) return;
+      if (iter >= 12) {
+        solvedRef.current = key; // safety cap — deterministic termination
+        return;
+      }
+      const node = areaRef.current;
+      if (!node) return;
+      const contentH = node.scrollHeight;
+      const pageH = node.clientHeight;
+      if (contentH <= pageH + 2) {
+        // Fits on one A4 page at the current scale — keep the scale and stop.
+        solvedRef.current = key;
+        return;
+      }
+      iter += 1;
+      const next = Math.max(0.7, (pageH / contentH) * compactRef.current);
+      if (Math.abs(next - compactRef.current) > 0.004) {
+        compactRef.current = next;
+        setCompact(next); // re-render, then measure again after layout applies
+        rafId = requestAnimationFrame(step);
+      } else {
+        // The scale cannot meaningfully improve any further (usually the 0.7
+        // floor) — settle rather than churn.
+        solvedRef.current = key;
+      }
+    };
+
+    // New (or changed) content: start solving from full size. The scale is only
+    // reset here — on a content change — never while solving.
+    if (compactRef.current !== 1) {
+      compactRef.current = 1;
+      setCompact(1);
+      // Double rAF so the full-size layout has been applied before measuring.
+      rafId = requestAnimationFrame(() => {
+        if (!cancelled) rafId = requestAnimationFrame(step);
+      });
+    } else {
+      rafId = requestAnimationFrame(step);
+    }
+
+    return () => {
+      cancelled = true;
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
+    };
+    // Intentionally NOT depending on `compact` — see comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memo, settings, truck, consignee, terms]);
 
   const cell = (bBorder = true, bBot = true): React.CSSProperties => ({
     boxSizing: "border-box",
     borderRight: bBorder ? `1px solid ${NAVY}` : "none",
     borderBottom: bBot ? `1px solid ${NAVY}` : "none",
-    padding: "4px 8px",
-    fontSize: "12.5px",
+    padding: `${s(4)}px 8px`,
+    fontSize: `${s(12.5)}px`,
     lineHeight: 1.25,
   });
   const cellLabel: React.CSSProperties = {
     color: "#3A4356",
     fontWeight: 900,
-    fontSize: "13.5px",
+    fontSize: `${s(13.5)}px`,
     letterSpacing: "0.3px",
     whiteSpace: "nowrap",
   };
-  const cellValue: React.CSSProperties = { fontWeight: 800, color: "#111", fontSize: "14.5px" };
+  const cellValue: React.CSSProperties = { fontWeight: 800, color: "#111", fontSize: `${s(14.5)}px` };
   const cellHeading: React.CSSProperties = {
-    padding: "4px 8px",
-    fontSize: "12px",
+    padding: `${s(4)}px 8px`,
+    fontSize: `${s(12)}px`,
     fontWeight: 900,
     color: "#0B2A55",
     background: "#F5F6FA",
@@ -217,10 +337,10 @@ export const ReceiptPage = forwardRef<
 
   const detailRow = (label: string, value: ReactNode, opts: React.CSSProperties = {}) => (
     <div style={{ ...cell(true, true), ...opts, display: "flex", alignItems: "stretch" }}>
-      <div style={{ width: "40%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+      <div style={{ width: "40%", padding: `${s(5)}px 8px`, background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
         <span style={cellLabel}>{label}</span>
       </div>
-      <div style={{ flex: 1, padding: "5px 8px", display: "flex", alignItems: "center" }}>
+      <div style={{ flex: 1, padding: `${s(5)}px 8px`, display: "flex", alignItems: "center" }}>
         <span style={{ ...cellValue, ...(opts.fontSize ? { fontSize: opts.fontSize } : {}) }}>{value}</span>
       </div>
     </div>
@@ -228,13 +348,13 @@ export const ReceiptPage = forwardRef<
 
   return (
     <div
-      ref={ref}
+      ref={setAreaRef}
       className="print-area"
       style={{
         width: "794px",
         height: "1123px",
         boxSizing: "border-box",
-        padding: "12px",
+        padding: `${s(12)}px`,
         background: "#ffffff",
         color: "#000",
         fontFamily: FONT,
@@ -256,48 +376,46 @@ export const ReceiptPage = forwardRef<
       >
       {/* ====== 1. HEADER ====== */}
       <div className="avoid-break flex items-stretch" style={{ borderBottom: `2px solid ${NAVY}` }}>
-        <div className="flex w-[112px] shrink-0 items-center justify-center px-2 py-[4px]">
+        <div className="flex w-[112px] shrink-0 items-center justify-center px-2 py-[6px]">
           {logoEl}
         </div>
-        <div className="flex flex-1 flex-col items-center justify-center px-3 py-[4px] text-center">
-          <div style={{ fontSize: "34px", fontWeight: 900, color: NAVY, lineHeight: 1.05, letterSpacing: "-0.3px" }}>
+        <div className="flex flex-1 flex-col items-center justify-center px-3 py-[6px] text-center">
+          {/* Company name: SRL red with a Castellar-style display serif (fallback
+              stack for machines without Castellar). Everything else uses the
+              document body sans font. */}
+          <div style={{ fontSize: `${s(34)}px`, fontWeight: 900, color: RED, lineHeight: 1.05, letterSpacing: "0.2px", fontFamily: CASTELLAR }}>
             {settings.companyName || "SAHIL ROAD LINES"}
           </div>
-          <div style={{ fontSize: "14px", fontWeight: 800, color: RED, letterSpacing: "0.7px", marginTop: "1px" }}>
+          <div style={{ fontSize: `${s(14)}px`, fontWeight: 800, color: NAVY, letterSpacing: "0.7px", marginTop: `${s(1)}px` }}>
             TRANSPORT CONTRACTORS &amp; COMMISSION AGENTS
           </div>
-          <div style={{ fontSize: "12.5px", lineHeight: 1.25, marginTop: "1px" }} className="text-neutral-700">
+          <div style={{ fontSize: `${s(12.5)}px`, lineHeight: 1.25, marginTop: `${s(2)}px` }} className="text-neutral-700">
             {settings.address}
           </div>
-          {settings.phone && (
-            <div style={{ fontSize: "12px", marginTop: "1px", fontWeight: 600 }} className="text-neutral-700">
-              Ph: {settings.phone}
-            </div>
-          )}
-          <div style={{ fontSize: "12px", fontWeight: 700, color: NAVY, marginTop: "1px" }}>
+          <div style={{ fontSize: `${s(12)}px`, fontWeight: 700, color: NAVY, marginTop: `${s(2)}px` }}>
             {settings.jurisdictionText || "Subject to Visakhapatnam Jurisdiction"}
           </div>
         </div>
-        {/* Cell numbers + GST — padded away from the extreme right border */}
+        {/* Contact details (cell phones, email, website) — GSTIN removed */}
         <div
-          className="flex w-[166px] shrink-0 flex-col justify-center gap-[2px] px-4 py-[4px] text-right"
-          style={{ borderLeft: `1px solid ${NAVY}`, fontSize: "12px", lineHeight: 1.3 }}
+          className="flex w-[190px] shrink-0 flex-col justify-center gap-[3px] px-4 py-[6px] text-right"
+          style={{ borderLeft: `1px solid ${NAVY}`, fontSize: `${s(12)}px`, lineHeight: 1.3 }}
         >
-          {settings.gst && <div className="font-semibold text-neutral-700">GSTIN: {settings.gst}</div>}
+          {settings.phone && <div className="font-semibold text-neutral-700">Ph: {settings.phone}</div>}
           {settings.email && <div className="text-neutral-600">{settings.email}</div>}
           {settings.website && <div className="text-neutral-600">{settings.website}</div>}
         </div>
       </div>
 
       {/* ====== 2. MEMO TITLE BAR ====== */}
-      <div className="avoid-break flex items-center justify-between" style={{ borderBottom: `2px solid ${NAVY}`, background: NAVY, color: "#fff", padding: "4px 14px" }}>
-        <div style={{ fontSize: "14px", fontWeight: 800 }}>
+      <div className="avoid-break flex items-center justify-between" style={{ borderBottom: `2px solid ${NAVY}`, background: NAVY, color: "#fff", padding: `${s(4)}px 14px` }}>
+        <div style={{ fontSize: `${s(14)}px`, fontWeight: 800 }}>
           No. {memo.memoNumber}
         </div>
-        <div style={{ fontSize: "20px", fontWeight: 900, letterSpacing: "2px", color: "#fff" }}>
+        <div style={{ fontSize: `${s(20)}px`, fontWeight: 900, letterSpacing: "2px", color: "#fff" }}>
           GOODS DESPATCH MEMO
         </div>
-        <div style={{ fontSize: "13px", fontWeight: 700 }}>
+        <div style={{ fontSize: `${s(13)}px`, fontWeight: 700 }}>
           Date: {formatDate(memo.dispatchDate)}
         </div>
       </div>
@@ -306,16 +424,16 @@ export const ReceiptPage = forwardRef<
       <div className="avoid-break" style={{ borderBottom: `2px solid ${NAVY}` }}>
         {/* From | value | To | value — side-by-side on one row */}
         <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-          <div style={{ width: "20%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+          <div style={{ width: "20%", padding: `${s(5)}px 8px`, background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
             <span style={cellLabel}>From:</span>
           </div>
-          <div style={{ width: "30%", padding: "5px 8px", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center", overflow: "hidden" }}>
+          <div style={{ width: "30%", padding: `${s(5)}px 8px`, borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center", overflow: "hidden" }}>
             <span style={cellValue}>{formatDisplayText(memo.fromLocation) || "—"}</span>
           </div>
-          <div style={{ width: "15%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+          <div style={{ width: "15%", padding: `${s(5)}px 8px`, background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
             <span style={cellLabel}>To:</span>
           </div>
-          <div style={{ width: "35%", padding: "5px 8px", display: "flex", alignItems: "center", overflow: "hidden" }}>
+          <div style={{ width: "35%", padding: `${s(5)}px 8px`, display: "flex", alignItems: "center", overflow: "hidden" }}>
             <span style={cellValue}>{formatDisplayText(memo.toLocation) || "—"}</span>
           </div>
         </div>
@@ -328,24 +446,24 @@ export const ReceiptPage = forwardRef<
         {detailRow("Description:", formatDisplayText(memo.description) || "—")}
         {/* Per Ton Rs. | value | Weight | value — side-by-side on one row */}
         <div className="flex" style={{ borderBottom: `0px solid ${NAVY}` }}>
-          <div style={{ width: "25%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+          <div style={{ width: "25%", padding: `${s(5)}px 8px`, background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
             <span style={cellLabel}>Per Ton Rs.:</span>
           </div>
-          <div style={{ width: "25%", padding: "5px 8px", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center", overflow: "hidden" }}>
+          <div style={{ width: "25%", padding: `${s(5)}px 8px`, borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center", overflow: "hidden" }}>
             <span style={cellValue}>{formatMoney(memo.ratePerTon)}</span>
           </div>
-          <div style={{ width: "20%", padding: "5px 8px", background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
+          <div style={{ width: "20%", padding: `${s(5)}px 8px`, background: "#F5F6FA", borderRight: `1px solid ${NAVY}`, display: "flex", alignItems: "center" }}>
             <span style={cellLabel}>Weight:</span>
           </div>
-          <div style={{ width: "30%", padding: "5px 8px", display: "flex", alignItems: "center", overflow: "hidden" }}>
-            <span style={cellValue}>{memo.weightTons ? `${memo.weightTons} T` : "—"}</span>
+          <div style={{ width: "30%", padding: `${s(5)}px 8px`, display: "flex", alignItems: "center", overflow: "hidden" }}>
+            <span style={cellValue}>{memo.weightTons ? `${memo.weightTons} MT` : "—"}</span>
           </div>
         </div>
       </div>
 
       {/* ====== 4. RED NOTICE BAR ====== */}
-      <div className="avoid-break" style={{ borderBottom: `2px solid ${NAVY}`, background: "#C1121F", color: "#fff", padding: "5px 14px", textAlign: "center" }}>
-        <div style={{ fontSize: "13.5px", fontWeight: 900, letterSpacing: "0.6px" }}>
+      <div className="avoid-break" style={{ borderBottom: `2px solid ${NAVY}`, background: "#C1121F", color: "#fff", padding: `${s(5)}px 14px`, textAlign: "center" }}>
+        <div style={{ fontSize: `${s(13.5)}px`, fontWeight: 900, letterSpacing: "0.6px" }}>
           Goods Receipt should be arrived within 15 days
         </div>
       </div>
@@ -357,38 +475,38 @@ export const ReceiptPage = forwardRef<
           <div style={{ borderRight: `2px solid ${NAVY}` }}>
             <div style={cellHeading}>Financial</div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Net Freight:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.netFreight)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>Net Freight:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.netFreight)}</div>
             </div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Total Hire:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.totalHire)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>Total Hire:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.totalHire)}</div>
             </div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Advance:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.advance)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>Advance:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.advance)}</div>
             </div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Balance:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.balance)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>Balance:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.balance)}</div>
             </div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Paid At:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatDisplayText(memo.paidAt) || "—"}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>Paid At:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatDisplayText(memo.paidAt) || "—"}</div>
             </div>
           </div>
 
           {/* CENTER: Vehicle (two vertically-centered halves: Truck + Transport) */}
           <div style={{ borderRight: `2px solid ${NAVY}`, display: "flex", flexDirection: "column" }}>
             <div style={cellHeading}>Vehicle</div>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px", minHeight: 0 }}>
-              <div style={{ fontSize: "14px", fontWeight: 800, color: "#3A4356" }}>Truck No.:</div>
-              <div style={{ fontSize: "22px", fontWeight: 900, color: NAVY, lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere", wordBreak: "break-word" }}>{truckNo}</div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: `${s(6)}px`, minHeight: 0 }}>
+              <div style={{ fontSize: `${s(14)}px`, fontWeight: 800, color: "#3A4356" }}>Truck No.:</div>
+              <div style={{ fontSize: `${s(22)}px`, fontWeight: 900, color: NAVY, lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere", wordBreak: "break-word" }}>{truckNo}</div>
             </div>
             <div style={{ borderTop: `1px solid ${NAVY}` }} />
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "6px", minHeight: 0 }}>
-              <div style={{ fontSize: "14px", fontWeight: 800, color: "#3A4356" }}>Transport:</div>
-              <div style={{ fontSize: "20px", fontWeight: 900, color: NAVY, lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere", wordBreak: "break-word" }}>{formatDisplayText(memo.transportName) || "—"}</div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: `${s(6)}px`, minHeight: 0 }}>
+              <div style={{ fontSize: `${s(14)}px`, fontWeight: 800, color: "#3A4356" }}>Transport:</div>
+              <div style={{ fontSize: `${s(20)}px`, fontWeight: 900, color: NAVY, lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere", wordBreak: "break-word" }}>{formatDisplayText(memo.transportName) || "—"}</div>
             </div>
           </div>
 
@@ -396,28 +514,28 @@ export const ReceiptPage = forwardRef<
           <div>
             <div style={cellHeading}>Expenses</div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Commission:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.commission)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>Commission:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.commission)}</div>
             </div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Loading:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.loadingCharges)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>Loading:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.loadingCharges)}</div>
             </div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>T.D.S.:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.tds)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>T.D.S.:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.tds)}</div>
             </div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Local Driver / Guide:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.localDriverGuide)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>Local Driver / Guide:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.localDriverGuide)}</div>
             </div>
             <div className="flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13px" }}>Office Mamuli:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: "14.5px" }}>{formatMoney(memo.goodsMamuli)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13)}px` }}>Office Mamuli:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 800, color: NAVY, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.goodsMamuli)}</div>
             </div>
             <div className="flex">
-              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: "13.5px" }}>Total Expenses:</div>
-              <div style={{ ...cell(false, false), width: "48%", fontWeight: 900, color: RED, fontSize: "14.5px" }}>{formatMoney(memo.totalExpenses)}</div>
+              <div style={{ ...cell(true, false), width: "52%", fontWeight: 900, fontSize: `${s(13.5)}px` }}>Total Expenses:</div>
+              <div style={{ ...cell(false, false), width: "48%", fontWeight: 900, color: RED, fontSize: `${s(14.5)}px` }}>{formatMoney(memo.totalExpenses)}</div>
             </div>
           </div>
         </div>
@@ -426,16 +544,16 @@ export const ReceiptPage = forwardRef<
       {/* ====== 6. FINAL PAYABLE BAR (prominent, but slightly smaller than the oversized version) ====== */}
       <div
         className="avoid-break"
-        style={{ borderBottom: `2px solid ${NAVY}`, background: "#FDECEE", padding: "5px 14px", textAlign: "center" }}
+        style={{ borderBottom: `2px solid ${NAVY}`, background: "#FDECEE", padding: `${s(5)}px 14px`, textAlign: "center" }}
       >
-        <div style={{ fontSize: "15px", fontWeight: 900, letterSpacing: "1.2px", color: NAVY }}>FINAL PAYABLE</div>
-        <div style={{ fontSize: "22px", fontWeight: 900, color: RED, lineHeight: 1.1, marginTop: "1px" }}>
+        <div style={{ fontSize: `${s(15)}px`, fontWeight: 900, letterSpacing: "1.2px", color: NAVY }}>FINAL PAYABLE</div>
+        <div style={{ fontSize: `${s(22)}px`, fontWeight: 900, color: RED, lineHeight: 1.1, marginTop: `${s(1)}px` }}>
           {formatMoney(memo.finalPayable)}
         </div>
-        <div style={{ fontSize: "11px", fontWeight: 600, color: NAVY, marginTop: "1px" }}>
+        <div style={{ fontSize: `${s(11)}px`, fontWeight: 600, color: NAVY, marginTop: `${s(1)}px` }}>
           (Rupees {amountInWords(memo.finalPayable)} Only)
         </div>
-        <div style={{ fontSize: "10.5px", fontWeight: 700, color: NAVY, marginTop: "1px" }}>
+        <div style={{ fontSize: `${s(10.5)}px`, fontWeight: 700, color: NAVY, marginTop: `${s(1)}px` }}>
           {memo.finalPaymentDate && <span>Final Payment Date: {formatDate(memo.finalPaymentDate)}</span>}
           {memo.paidBy && <span>  |  Paid By: {memo.paidBy}</span>}
           {memo.paymentMethod && <span>  |  Mode: {memo.paymentMethod}</span>}
@@ -443,17 +561,17 @@ export const ReceiptPage = forwardRef<
       </div>
 
       {/* ====== 7. DECLARATION ====== */}
-      <div className="avoid-break" style={{ borderBottom: `1px solid ${NAVY}`, padding: "4px 14px" }}>
-        <div style={{ fontSize: "10.5px", lineHeight: 1.35, color: "#222" }}>
+      <div className="avoid-break" style={{ borderBottom: `1px solid ${NAVY}`, padding: `${s(4)}px 14px` }}>
+        <div style={{ fontSize: `${s(10.5)}px`, lineHeight: 1.35, color: "#222" }}>
           I agree with terms and conditions overleaf and abide by that Received the goods in good condition.
         </div>
       </div>
 
       {/* ====== 8. TERMS & CONDITIONS ====== */}
       {terms.length > 0 && (
-        <div className="avoid-break" style={{ borderBottom: `1px solid ${NAVY}`, padding: "4px 14px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 900, color: NAVY, marginBottom: "1px", letterSpacing: "0.5px", textTransform: "uppercase" as const }}>Terms &amp; Conditions</div>
-          <ol className="list-decimal pl-5" style={{ fontSize: "10px", lineHeight: 1.25, color: "#333" }}>
+        <div className="avoid-break" style={{ borderBottom: `1px solid ${NAVY}`, padding: `${s(4)}px 14px` }}>
+          <div style={{ fontSize: `${s(11)}px`, fontWeight: 900, color: NAVY, marginBottom: `${s(1)}px`, letterSpacing: "0.5px", textTransform: "uppercase" as const }}>Terms &amp; Conditions</div>
+          <ol className="list-decimal pl-5" style={{ fontSize: `${s(10)}px`, lineHeight: 1.25, color: "#333" }}>
             {terms.map((t, i) => <li key={i} className="mb-0" style={{ marginBottom: 0 }}>{t}</li>)}
           </ol>
         </div>
@@ -461,20 +579,20 @@ export const ReceiptPage = forwardRef<
 
       {/* ====== 9. SIGNATURES ====== */}
       <div className="avoid-break flex" style={{ borderBottom: `1px solid ${NAVY}` }}>
-        <div style={{ flex: 1, borderRight: `1px solid ${NAVY}`, padding: "6px 14px", textAlign: "center", minHeight: "130px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginTop: "78px" }}>Signature of the Driver</div>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#777" }}>on behalf of the Owner</div>
+        <div style={{ flex: 1, borderRight: `1px solid ${NAVY}`, padding: `${s(6)}px 14px`, textAlign: "center", minHeight: `${s(130)}px` }}>
+          <div style={{ fontSize: `${s(11)}px`, fontWeight: 700, color: "#555", marginTop: `${s(78)}px` }}>Signature of the Driver</div>
+          <div style={{ fontSize: `${s(10)}px`, fontWeight: 600, color: "#777" }}>on behalf of the Owner</div>
         </div>
-        <div style={{ flex: 1, padding: "6px 14px", textAlign: "center", minHeight: "130px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginTop: "78px" }}>For <b style={{ color: NAVY, fontWeight: 800 }}>{settings.companyName || "SAHIL ROAD LINES"}</b></div>
-          <div style={{ fontSize: "10px", fontWeight: 600, color: "#777" }}>Authorised Signatory</div>
+        <div style={{ flex: 1, padding: `${s(6)}px 14px`, textAlign: "center", minHeight: `${s(130)}px` }}>
+          <div style={{ fontSize: `${s(11)}px`, fontWeight: 700, color: "#555", marginTop: `${s(78)}px` }}>For <b style={{ color: NAVY, fontWeight: 800 }}>{settings.companyName || "SAHIL ROAD LINES"}</b></div>
+          <div style={{ fontSize: `${s(10)}px`, fontWeight: 600, color: "#777" }}>Authorised Signatory</div>
         </div>
       </div>
 
       {/* ====== 10. BOTTOM WARNING ====== */}
       <div
         className="avoid-break"
-        style={{ background: NAVY, color: "#fff", padding: "4px 14px", textAlign: "center", fontSize: "10.5px", fontWeight: 900, letterSpacing: "0.3px" }}
+        style={{ background: NAVY, color: "#fff", padding: `${s(4)}px 14px`, textAlign: "center", fontSize: `${s(10.5)}px`, fontWeight: 900, letterSpacing: "0.3px" }}
       >
         Return payment will not get without this Receipt and any other particulars
       </div>
@@ -565,7 +683,7 @@ function MemoView() {
   };
 
   const shareText = () =>
-    `${settings?.companyName ?? "Sahil Road Lines"}\nMemo ${memo?.memoNumber}\nDate: ${formatDate(memo?.dispatchDate ?? "")}\nTruck: ${truck?.truckNumber || memo?.truckNumber || "—"}\nMaterial: ${formatDisplayText(memo?.materialName) || "—"}\nFinal Payable: ${formatMoney(memo?.finalPayable ?? 0)}`;
+    `${settings?.companyName ?? "Sahil Road Lines"}\nMemo ${memo?.memoNumber}\nDate: ${formatDate(memo?.dispatchDate ?? "")}\nTruck: ${normalizeTruckNumber(truck?.truckNumber || memo?.truckNumber) || "—"}\nMaterial: ${formatDisplayText(memo?.materialName) || "—"}\nFinal Payable: ${formatMoney(memo?.finalPayable ?? 0)}`;
 
   const shareWhatsApp = async () => {
     if (!memo) return;
@@ -682,8 +800,17 @@ function MemoView() {
 
         .avoid-break { break-inside: avoid; page-break-inside: avoid; }
 
-        /* The print document is hidden on screen; it becomes the ONLY page on print. */
-        .print-only { display: none !important; }
+        /* The print document is hidden OFF-SCREEN (kept in layout) so the
+           auto-compaction measurement still works for the real printed copy.
+           It becomes the ONLY page on print. */
+        .print-only {
+          position: fixed !important;
+          top: 0 !important;
+          left: -9999px !important;
+          display: block !important;
+          visibility: hidden !important;
+          pointer-events: none !important;
+        }
 
         @media print {
           html, body {
@@ -715,6 +842,8 @@ function MemoView() {
           */
           .print-only {
             display: block !important;
+            visibility: visible !important;
+            position: static !important;
             width: 210mm !important;
             min-width: 210mm !important;
             max-width: 210mm !important;

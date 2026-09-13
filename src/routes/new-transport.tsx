@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Combobox } from "@/components/Combobox";
-import { toInputDate, fromInputDate } from "@/lib/format";
+import { toInputDate, fromInputDate, normalizeTruckNumber } from "@/lib/format";
 import { toast } from "sonner";
 import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 
@@ -158,15 +158,17 @@ function NewTransportEntry() {
     if (!form.dispatchDate) return toast.error("Dispatch date is required");
     setSaving(true);
     try {
+      const normalizedTruck = normalizeTruckNumber(form.truckNumber);
+      const finalForm = { ...form, truckNumber: normalizedTruck || form.truckNumber };
       await ensureConsigneeExists(form.consigneeName);
-      await ensureTruckExists(form.truckNumber, form.driverName, form.ownerName, form.ownerPhone);
+      await ensureTruckExists(normalizedTruck || form.truckNumber, form.driverName, form.ownerName, form.ownerPhone);
       if (edit) {
-        await updateTransportEntry(edit, form);
+        await updateTransportEntry(edit, finalForm);
         toast.success("Transport entry updated");
         setDirty(false);
         nav({ to: "/transport/$id", params: { id: edit } });
       } else {
-        const created = await createTransportEntry(form);
+        const created = await createTransportEntry(finalForm);
         toast.success(`Entry ${created.entryNumber} created`);
         setDirty(false);
         nav({ to: "/transport/$id", params: { id: created.id } });
@@ -242,8 +244,9 @@ function NewTransportEntry() {
               options={(trucks ?? []).map((t) => ({ value: t.truckNumber, label: t.truckNumber, keywords: `${t.driverName} ${t.ownerName}` }))}
               value={form.truckNumber}
               onChange={(v) => {
-                set("truckNumber", v);
-                const t = trucks?.find((x) => x.truckNumber === v);
+                const norm = normalizeTruckNumber(v);
+                set("truckNumber", norm);
+                const t = trucks?.find((x) => normalizeTruckNumber(x.truckNumber) === norm);
                 if (t) setForm((f) => ({ ...f, driverName: t.driverName, ownerName: t.ownerName, ownerPhone: t.ownerPhone }));
               }}
               placeholder="Search or type truck number…"

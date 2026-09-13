@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Combobox } from "@/components/Combobox";
-import { toInputDate, fromInputDate } from "@/lib/format";
+import { toInputDate, fromInputDate, normalizeTruckNumber } from "@/lib/format";
 import { toast } from "sonner";
 import { useAuth, isSuperAdmin } from "@/lib/AuthContext";
 
@@ -175,7 +175,7 @@ function TransportEditPage() {
         actualOverrides.push(...Array.from(editedFields));
       }
       // Writes ONLY to transport_list — the originating memo is never touched.
-      await updateTransportEntry(id, form, actualOverrides);
+      await updateTransportEntry(id, { ...form, truckNumber: normalizeTruckNumber(form.truckNumber) || form.truckNumber }, actualOverrides);
       toast.success("Transport entry updated");
       setDirty(false);
       nav({ to: "/transport-list" });
@@ -250,7 +250,7 @@ function TransportEditPage() {
             <Combobox
               options={(trucks ?? []).map((t) => ({ value: t.truckNumber, label: t.truckNumber, keywords: `${t.driverName} ${t.ownerName}` }))}
               value={form.truckNumber}
-              onChange={(v) => set("truckNumber", v)}
+              onChange={(v) => set("truckNumber", normalizeTruckNumber(v))}
               placeholder="Search or type truck number…"
               allowCustom
               createLabel="Use"

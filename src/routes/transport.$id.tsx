@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { useTransportData } from "@/lib/useTransportStore";
 import { getTransportEntry, deleteTransportEntry, type TransportEntry } from "@/lib/transportListStore";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, normalizeTruckNumber } from "@/lib/format";
 import { formatDisplayText } from "@/lib/textUtils";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -85,7 +85,7 @@ function TransportEntryView() {
         </Section>
 
         <Section title="Vehicle Information">
-          <Row label="Truck Number" value={entry.truckNumber || "—"} />
+          <Row label="Truck Number" value={normalizeTruckNumber(entry.truckNumber) || "—"} />
           <Row label="Driver Name" value={formatDisplayText(entry.driverName) || "—"} />
           <Row label="Owner Name" value={formatDisplayText(entry.ownerName) || "—"} />
           <Row label="Owner Phone" value={entry.ownerPhone || "—"} />
